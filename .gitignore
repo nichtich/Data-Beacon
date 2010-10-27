@@ -1,0 +1,14 @@
+# temp files
+*~
+*.bak
+
+# Makefile etc.
+Makefile
+Makefile.old
+blib
+pm_to_blib
+
+# distributions
+MANIFEST
+*.gz
+

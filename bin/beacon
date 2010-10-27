@@ -1,0 +1,178 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+beacon - beacon command line client
+
+=cut
+
+use strict;
+
+our $VERSION = '0.1';
+
+use Getopt::Long;
+use Pod::Usage;
+use Data::Beacon;
+
+my ($help, $man, $configfile, $file, $name, $testmode, $quiet);
+
+GetOptions(
+    "config:s" => \$configfile,
+    "help|?" => \$help,
+    "man" => \$man,
+    "file:s" => \$file,
+    "name:s" => \$name,
+    "test" => \$testmode,
+    "quiet" => \$quiet,
+) or pod2usage(2);
+pod2usage(1) if $help or (@ARGV and $ARGV[0] eq 'help');
+pod2usage(-verbose => 2) if $man;
+
+my $beaconstore; # TODO: parse configfile and initialize BeaconStore, if required
+
+my $beaconfile;
+my %handlers = ( 
+    error => sub {
+        my ($msg, $lineno, $line) = @_;
+        print STDERR "$msg at line $lineno\n";
+    }
+);
+
+$handlers{error} = undef if $quiet;
+
+# additional sophisticated command line parsing follows
+
+my $cmd = shift @ARGV;
+if (defined $cmd && 
+    !($cmd =~ /^(dump|about|parse|list|init|insert|update|delete|query)$/)) {
+    if (defined $file) {
+        $name = $cmd;
+        $cmd = shift @ARGV;
+    } elsif (defined $name) {
+        $file = $cmd;
+        $cmd = shift @ARGV;
+    } else {
+        $file = $cmd;
+        $cmd = "parse";
+        failed("File '$file' not found. Use -h for help") # maybe misspelled command
+            unless (-f $file);
+    }
+}
+unless ($cmd) {
+    if (defined $file) {
+        $cmd = 'parse';
+    } elsif (defined $name) {
+        $cmd = 'about';
+    } else {
+        failed("Please specify at least a command, name, file, or -h for help\n");
+    }
+}
+
+sub requirefile {
+    $file = shift @ARGV unless defined $file;
+    failed("Please specifiy a file to parse") unless defined $file;
+    $beaconfile = new Data::Beacon( $file, %handlers );
+}
+
+sub requirename {
+    $name = shift @ARGV unless defined $name;
+    failed("Please specifiy a beacon name!") unless defined $name;
+    $name = lc($name);
+    failed("Not a valid beacon name: $name") unless $name =~ /^[a-z][a-z0-9_.-]+$/;
+}
+
+sub requirestore {
+    failed("Command $cmd requires a beacon store. Please provide a config file")
+        unless $beaconstore;
+}
+
+
+if ($cmd eq 'list' or $cmd eq 'init') {
+    requirestore();
+} elsif($cmd eq 'parse') {
+    requirefile();
+} else {
+    if ($cmd =~ /^(dump|about|query)$/) {
+        $beaconstore ? requirename() : requirefile();
+    } else { # delete|insert|update : require store and name
+        requirestore();
+        requirename();
+        requirefile() if $cmd =~ /^(insert|update)$/;
+    }
+}
+
+# end of additional command line parsing
+
+if ($testmode) {
+    print "Running in test mode with the following arguments:\n";
+    print "  command: $cmd\n";
+    print "  file:    $file\n";
+    print "  name:    $name\n";
+    print "  config:  $configfile\n";
+}
+
+
+if ($cmd eq 'parse') { # parse a file
+    $beaconfile->parse();
+    print $beaconfile->metafields();
+} elsif($cmd eq 'about') { # show info about a file or stored beacon
+    # TODO: beaconstore
+    print $beaconfile->metafields(); 
+} # TODO other commands
+
+sub failed { # error handler
+    my $msg = shift;
+    $msg =~ s/\n$//;
+    $msg =~ s/ at .+ line \d+//;
+    print STDERR "$msg!\n";
+    exit(1);
+}
+
+=head1 SYNOPSIS
+
+beacon [ <options> ] [ <command> ] [ <file> ]
+
+=head1 ARGUMENTS
+
+ -help          brief help message
+ -man           full documentation with examples
+ -file <name>   specify a file
+ -name <name>   specify a name
+ -test          enable test mode (no stored beacon is modified)
+ -config <file> specify config file
+ -quiet         suppress all error messages
+
+ about <name>   show meta information about a file or stored beacon
+ parse <file>   parse a full beacon file and print meta information
+
+The following
+
+ dump <name>    parse a beacon file or dump a stored beacon
+
+ list           list names of all stored beacons
+ init           initialize beacon store
+
+ insert <name> <file>  insert a new beacon from file to a store
+ update <name> <file>  replace a beacon from file to a store
+ delete <name>         remove a beacon from a store
+
+ query <name> <id>     query a beacon (stored of file) for an id
+
+=head1 NOTE
+
+The command name 'beacon' clashes with a tool of same name from the
+ax25-tools package (L<http://www.linux-ax25.org/>. If you need to use
+beacon together with hamradio, you need to rename one of the two scripts.
+
+=head1 AUTHOR
+
+Jakob Voss C<< <jakob.voss@gbv.de> >>
+
+=head1 LICENSE
+
+Copyright (C) 2007-2010 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+
+This library is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself, either Perl version 5.8.8 or, at
+your option, any later version of Perl 5 you may have available.
+
