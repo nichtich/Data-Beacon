@@ -8,8 +8,9 @@ DESCRIPTION
 INSTALLATION
     Manually from the source:
 
+    $ perl Makefile.PL
     $ make test
-    $ make install
+    $ make install # or: sudo make install
 
 BUGS
     Please report any bugs or feature requests to this project's GitHub

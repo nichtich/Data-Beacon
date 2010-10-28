@@ -15,6 +15,9 @@ use Carp;
 
 our $VERSION = '0.10';
 
+use base 'Exporter';
+our @EXPORT_OK = qw(beaconlink);
+
 =head1 SYNOPSIS
 
   use Data::Beacon;
@@ -27,30 +30,41 @@ our $VERSION = '0.10';
   $beacon->meta( 'DESCRIPTION' => '' );              # unset meta field
   print $beacon->metafields();
 
-  $beacon->parse();
+  $beacon->parse(); # proceed parsing links
   $beacon->parse( error => sub { print STDERR $_[0] . "\n" } );
+
   $beacon->parse( $beaconfile );
+  $beacon->parse( \$beaconstring );
+  $beacon->parse( sub { return $nextline } );
 
-
-  $beacon->count(); # number of parsed links
-  $beacon->lines(); # number of lines
-
-#  $beacon->parse( [$file], \&handler ); # parse all lines
-#  $beacon->query( $id );
+  $beacon->count();      # number of parsed links
+  $beacon->lines();      # number of lines
+  $beacon->errorcount(); # number of parsing errors
 
 =head1 DESCRIPTION
 
-=cut
+This package implements a parser and serializer for BEACON format with
+dedicated error handling.
+
+  my $beacon = new SeeAlso::Beacon( ... );
+  $beacon->parse( 'link' => \handle_link );
+
+Alternatively you can use the parser as iterator (not implemented yet):
+
+  my $beacon = new SeeAlso::Beacon( ... );
+  while (my $link = $beacon->nextlink()) {
+      handle_link( @{$link} );
+  }
 
 =head1 METHODS
 
-=head2 new ( [ $from ] { parameter => value } )
+=head2 new ( [ $from ] { handler => coderef } )
 
 Create a new Beacon object, optionally from a given file. If you specify a 
 source via C<$from> argument or as parameter C<from =E<gt> $from>, it will
 be opened for parsing and all meta fields will immediately be read from it.
 Otherwise you get an empty, but initialized Beacon object. See the C<parse>
-methods for more details.
+methods for more details about possible handlers as parameters.
 
 =cut
 
@@ -67,9 +81,10 @@ sub new {
 Get and/or set one or more meta fields. Returns a hash (no arguments),
 or string or undef (one argument), or croaks on invalid arguments. A
 meta field can be unset by setting its value to the empty string.
-The FORMAT field cannot be unset. This method may also croak if supplied
-invalid field for known fields such as FORMAT, PREFIX, FEED, EXAMPLES,
-REVISIT, TIMESTAMP.
+The FORMAT field cannot be unset. This method may also croak if a known
+fields, such as FORMAT, PREFIX, FEED, EXAMPLES, REVISIT, TIMESTAMP is
+tried to set to an invalid value. Such an error will not change the
+error counter of this object or modify C<lasterror>.
 
 =cut
 
@@ -98,7 +113,7 @@ sub meta {
         } else { # check format of known meta fields
             if ($key eq 'TARGET') {
 
-                # TODO...{ID} $PND etc.
+                # TODO: check {ID} $PND etc.
 
             } elsif ($key eq 'FEED') {
                 croak 'FEED meta value must be a HTTP/HTTPS URL' 
@@ -127,7 +142,7 @@ sub meta {
                     delete $self->{meta}->{EXAMPLES};
                     next;
                 }
-                # NOTE: examples are not checked for validity, we may need PREFIX first
+                # NOTE: examples are not checked for validity, may need PREFIX
             }
             $self->{meta}->{$key} = $value;
         }
@@ -136,8 +151,9 @@ sub meta {
 
 =head2 count
 
-Returns the number of links, successfully read so far, or zero. 
-In contrast to C<meta('count')>, this method always returns a number.
+Returns the number of links, successfully read so far, or zero. In contrast to
+C<meta('count')>, this method always returns a number. Note that valid links
+that could be parsed but not handled by a custom link handler, are included.
 
 =cut
 
@@ -156,6 +172,28 @@ sub line {
     return $_[0]->{line};
 }
 
+=head2 lasterror
+
+Returns the last parsing error message (if any). Errors triggered by directly
+calling C<meta> are not included. In list context returns a list of error
+message, line number, and current line content.
+
+=cut
+
+sub lasterror {
+    return wantarray ? @{$_[0]->{lasterror}} : $_[0]->{lasterror}->[0];  
+}
+
+=head2 errorcount
+
+Returns the number of parsing errors or zero.
+
+=cut
+
+sub errorcount {
+    return $_[0]->{errorcount};
+}
+
 =head2 metafields 
 
 Return all meta fields, serialized and sorted as string.
@@ -169,8 +207,8 @@ sub metafields {
     delete $meta{'FORMAT'};
     my $count = $meta{'COUNT'};
     delete $meta{'COUNT'};
-    # TODO: specific default order of fields
-    foreach my $key (keys %meta) {
+    # TODO: specific default order of known fields
+    foreach my $key (sort keys %meta) {
         push @lines, "#$key: " . $meta{$key}; 
     }
     push (@lines, "#COUNT: " . $count) if defined $count;
@@ -178,18 +216,33 @@ sub metafields {
     return @lines ? join ("\n", @lines) . "\n" : "";
 }
 
-=head2 parse ( [ $from ] { parameter => value } )
+=head2 parse ( [ $from ] { handler => coderef } )
 
-Parse all remaining links. If provided a C<$from> parameter, this starts 
-a new Beacon. That means the following is equivalent:
+Parse all remaining links. If provided a C<from> parameter, this starts 
+a new Beacon. That means the following three are equivalent:
 
-  $b = new SeeAlso::Beacon( $filename );
+  $b = new SeeAlso::Beacon( $from );
+
+  $b = new SeeAlso::Beacon( from => $from );
 
   $b = new SeeAlso::Beacon;
-  $b->parse( $filename );
+  $b->parse( $from );
 
-By default, errors are silently ignored, unless you specifiy an error 
-handler.
+If C<from> is a scalar, it is used as file to parse from. Alternatively you
+can supply a string reference, or a code reference.
+
+By default, all errors are silently ignored, unless you specifiy an C<error>
+handler. The last error can be retrieved with the C<lasterror> method and the
+number of errors by C<errorcount>. Returns true only if C<errorcount> is zero 
+after parsing. Note that some errors may be less important.
+
+Finally, the C<link> handler can be a code reference to a method that is
+called for each link (that is each line in the input that contains a valid
+link). The following arguments are passed to the handler:
+
+...
+
+The number of sucessfully parsed links is returned by C<count>.
 
 =cut
 
@@ -199,36 +252,34 @@ sub parse {
     $self->_initparams( @_ );
     $self->_startparsing if defined $self->{from}; # start from new source
 
-    return unless $self->{fh};
-
     $self->{meta}->{COUNT} = 0;
     my $line = $self->{lookaheadline};
-    goto(OH_MY_GOD_THE_EVIL_GOTO_WE_WILL_ALL_DIE) if defined $line;
+    $line = $self->_readline() unless defined $line;
 
-    while ($line = readline $self->{fh}) {
-        OH_MY_GOD_THE_EVIL_GOTO_WE_WILL_ALL_DIE:
-
+    while (defined $line) {
         $self->{line}++;
 
         my $link = $self->parselink( $line );
 
-        if (!ref($link)) { # error
-            #$self->{errorcount}++;
-            if ($self->{error_handler}) {
-                $self->{error_handler}->( $link, $self->{line}, $line );
-            } else {
-                # TODO: add default error handler
-            }
+        if (!ref($link)) {
+            $self->_handle_error( $link, $self->{line}, $line );
         } elsif (@$link) { # no empty line or comment
 
             # TODO: check whether id together with prefix is an URI
-            # TODO: handle link
-
             $self->{meta}->{COUNT}++; # TODO: only if not error
+
+            if ($self->{link_handler}) {
+                # TODO: what if link handler croaks?
+                # does the link handler get expanded or compressed links?
+                $self->{link_handler}->( @$link );
+            }
         }
+        $line = $self->_readline();
     } 
 
-    # TODO: call end handler
+    # TODO: we ma check addittional integrity, e.g. examples etc.
+
+    return $self->errorcount == 0;
 }
 
 =head2 parselink ( $line )
@@ -243,7 +294,7 @@ is a valid URI, because it may be expanded by a prefix.
 sub parselink {
     my ($self, $line) = @_;
 
-    my @parts = map { s/^\s+|\s$//g; $_ } split('\|',$line);
+    my @parts = map { s/^\s+|\s+$//g; $_ } split('\|',$line);
     my $n = @parts;
     return [] if ($n < 1 || $parts[0] eq '');
     return "found too many parts (>4), divided by '|' characters" if $n > 4;
@@ -255,18 +306,54 @@ sub parselink {
     $link->[1] = shift @parts if @parts;
     $link->[2] = shift @parts if @parts;
 
-    return "URI part has not valid URI form" if @parts; 
+    return 'URI part has not valid URI form' if @parts; 
 
     return $link;
+}
+
+=head1 FUNCTIONS
+
+The following functions can be exported on request.
+
+=head2 beaconlink ( $id, $label, $description, $uri )
+
+Serialize a link and return it as condensed string.
+'C<|>' characters in link elements are silently removed.
+
+=cut
+
+sub beaconlink {
+    my @link = map { s/\|//g; $_ } @_;
+    return '' unless @link == 4 and $link[0] ne '';
+
+    if ( is_uri($link[3]) ) {
+        my $uri = pop @link;
+        if ($link[2] eq '') {
+           pop @link;
+           pop @link if ($link[1] eq '');
+        }
+        push @link, $uri;
+    } else {
+        if ($link[3] eq '') {
+            pop @link;
+            if ($link[2] eq '') {
+                pop @link;
+                pop @link if ($link[1] eq '');
+            }
+        }
+    }
+ 
+    return join('|', @link);
 }
 
 =head1 INTERNAL METHODS
 
 If you directly call any of this methods, puppies will die.
 
-=head2 _initparams ( [ $from ] { parameter => value } )
+=head2 _initparams ( [ $from ] { handler => coderef } )
 
-Initialize parameters as passed to C<new> or C<parse>.
+Initialize parameters as passed to C<new> or C<parse>. Known parameters
+are C<from>, C<error>, and C<link>. C<from> is not checked here.
 
 =cut
 
@@ -279,13 +366,12 @@ sub _initparams {
     $self->{from} = $param{from}
         if defined $param{from};
 
-    if (defined $param{error}) { # TODO: do we want to unset an error handler?
-        croak 'Error handler must be code'
-            unless ref($param{error}) and ref($param{error}) eq 'CODE';
-        $self->{error_handler} = $param{error};
+    foreach my $name (qw(error link)) {
+        next unless defined $param{$name};
+        croak "$name handler must be code"
+            unless ref($param{$name}) and ref($param{$name}) eq 'CODE';
+        $self->{$name.'_handler'} = $param{$name};
     }
-
-    # TODO: enable more handlers
 }
 
 =head2 _startparsing
@@ -304,30 +390,82 @@ sub _startparsing {
 
     $self->{meta} = { 'FORMAT' => 'BEACON' };
     $self->{line} = 0;
-    #$self->{errorcount} = 0;
+    $self->{errorcount} = 0;
+    $self->{lasterror} = [];
     $self->{lookaheadline} = undef;
-
+    $self->{fh} = undef;
+    $self->{inputlines} = [];
     $self->{examples} = [];
 
     return unless defined $self->{from};
 
-    open $self->{fh}, $self->{from};
-    # TODO: check error on opening stream
+    my $type = ref($self->{from});
+    if ($type) {
+        if ($type eq 'SCALAR') {
+            $self->{inputlines} = [ split("\n",${$self->{from}}) ];
+        } elsif ($type ne 'CODE') {
+            $self->_handle_error( "Unknown input $type", 0, '' );
+            return;
+        }
+    } elsif(!(open $self->{fh}, $self->{from})) {
+        $self->_handle_error( 'Failed to open ' . $self->{from}, 0, '' );
+        return;
+    }
 
     # TODO: remove BOM (allowed in UTF-8)
     # /^\xEF\xBB\xBF/
-    while (my $line = readline $self->{fh}) {
+    my $line = $self->_readline();
+    return unless defined $line;
+
+    do {
         $line =~ s/^\s+|\s*\n?$//g;
         if ($line eq '') {
             $self->{line}++;
-            next;
         } elsif ($line =~ /^#([^:=\s]+)(\s*[:=]?\s*|\s+)(.*)$/) {
             $self->{line}++;
             $self->meta($1,$3); # TODO: check for errors and handle them?
         } else {
             $self->{lookaheadline} = $line;
-            last;
+            return;
         }
+        $line = $self->_readline();
+    } while (defined $line);
+}
+
+=head2 _handle_error ( $msg, $lineno, $line )
+
+Internal error handler that calls a custom error handler,
+increases the error counter and stores the last error. 
+
+=cut
+
+sub _handle_error {
+    my $self = shift;
+    $self->{lasterror} = [ @_ ];
+    $self->{errorcount}++;
+    $self->{error_handler}->( @_ ) if $self->{error_handler};
+}
+
+=head2 _readline
+
+Internally read a line for parsing. May trigger an error.
+
+=cut
+
+sub _readline {
+    my $self = shift;
+    if ($self->{fh}) {
+        return eval { no warnings; readline $self->{fh} };
+    } elsif (ref($self->{from}) && ref($self->{from}) eq 'CODE') {
+        my $line = eval { $self->{from}->(); };
+        if ($@) { # input handler died
+#print "L: $@";
+            $self->_handle_error( $@, $self->{lineno}, '' );
+            $self->{from} = undef;
+        }
+        return $line;
+    } else {
+        return @{$self->{inputlines}} ? shift(@{$self->{inputlines}}) : undef;
     }
 }
 

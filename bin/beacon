@@ -12,7 +12,7 @@ our $VERSION = '0.1';
 
 use Getopt::Long;
 use Pod::Usage;
-use Data::Beacon;
+use Data::Beacon qw(beaconlink);
 
 my ($help, $man, $configfile, $file, $name, $testmode, $quiet);
 
@@ -54,7 +54,7 @@ if (defined $cmd &&
     } else {
         $file = $cmd;
         $cmd = "parse";
-        failed("File '$file' not found. Use -h for help") # maybe misspelled command
+        failed("File '$file' not found. Use -h for help") # misspelled command?
             unless (-f $file);
     }
 }
@@ -111,14 +111,24 @@ if ($testmode) {
     print "  config:  $configfile\n";
 }
 
+# Now finally do something
 
 if ($cmd eq 'parse') { # parse a file
     $beaconfile->parse();
     print $beaconfile->metafields();
+    # TODO: we may warn on errors, wrong count etc.
 } elsif($cmd eq 'about') { # show info about a file or stored beacon
     # TODO: beaconstore
     print $beaconfile->metafields(); 
+} elsif($cmd eq 'dump') { # dump a full, parsed beacon file
+    print $beaconfile->metafields();
+    $beaconfile->parse(
+        'link' => sub { print beaconlink(@_) . "\n"; }
+    );
+    # TODO: we may warn on errors, wrong count etc.
 } # TODO other commands
+
+
 
 sub failed { # error handler
     my $msg = shift;

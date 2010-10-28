@@ -11,6 +11,8 @@ my $r;
 my $b = new Data::Beacon();
 isa_ok($b,'Data::Beacon');
 
+is( $b->errorcount, 0 );
+
 # meta fields
 my %m = $b->meta();
 is_deeply( \%m, { 'FORMAT' => 'BEACON' }, 'meta()' );
@@ -26,6 +28,8 @@ eval { $b->meta( ' ' => 'x' ); }; ok( $@ );
 eval { $b->meta( '~' => 'x' ); }; ok( $@ );
 eval { $b->meta( 'prefix' => 'htt' ); }; ok( $@ , 'detect invalid PREFIX');
 eval { $b->meta( 'Feed' => 'http://#' ); }; ok( $@ , 'detect invalid FEED');
+
+is( $b->errorcount, 0, 'croaking errors are not counted' );
 
 $b->meta( 'prefix' => 'http://foo.bar' );
 is_deeply( { $b->meta() }, { 'FORMAT' => 'BEACON', 'PREFIX' => 'http://foo.bar' } );
@@ -66,11 +70,11 @@ my %t = (
   "qid|\t" => ["qid","","",""],
   "qid|" => ["qid","","",""],
   "qid|lab" => ["qid","lab","",""],
-  "qid|lab|dsc" => ["qid","lab","dsc",""],
-  "qid| |dsc" => ["qid","","dsc",""],
-  "qid||dsc" => ["qid","","dsc",""],
-  "qid|u:ri" => ["qid","","","u:ri"],
-  "qid|lab|dsc|u:ri" => ["qid","lab","dsc","u:ri"],
+  "qid|  lab |dsc" => ["qid","lab","dsc",""],
+  "qid| | dsc" => ["qid","","dsc",""],
+  " qid||dsc" => ["qid","","dsc",""],
+  "qid |u:ri" => ["qid","","","u:ri"],
+  "qid |lab  |dsc|u:ri" => ["qid","lab","dsc","u:ri"],
   "qid|lab|u:ri" => ["qid","lab","","u:ri"],
   " \t" => [],
   "" => [],
@@ -94,45 +98,68 @@ is_deeply( { $b->meta() }, {
 
 is( $b->line, 6, 'line()' );
 $b->parse();
+is( $b->lasterror, "found too many parts (>4), divided by '|' characters" );
+
+is( $b->errorcount, 1 );
 
 eval { $b = new Data::Beacon( error => 'xxx' ); }; ok( $@, 'error handler' );
+is( $b->errorcount, 1 );
 
-# my $e;
-# $b = new Data::Beacon( "t/beacon1.txt", e );
+$b->parse("xxx"); #; ok( $@, 'error parsing' );
+is( $b->errorcount, 1 );
 
-# TODO: test handlers (which should not be reset by parse unless wanted)
+my $e = $b->lasterror;
+is( $e, 'Failed to open xxx', 'lasterror, scalar context' );
 
-__END__
+my @es = $b->lasterror;
+is_deeply( \@es, [ 'Failed to open xxx', 0, '' ], 'lasterror, list context' );
 
-# Serializing is currently implemented in SeeAlso::Response only
+$b->parse( { } );
+is( $b->errorcount, 1, 'cannot parse a hashref' );
 
-use SeeAlso::Response;
+$b->parse( \"x:from|x:to\n\n|comment" );
+is( $b->count, 1, 'parse from string' );
+is( $b->line, 3, '' );
 
-# serializing BEACON
 
-my $r = SeeAlso::Response->new( "|x|" );
-$r->add( "a||", "|b", "http://example.com|" );
-is( $r->toBEACON(), "x|a|b|http://example.com" );
+my @tmplines = ( '#FOO: bar', '#DOZ', '#BAZ: doz' );
+$b->parse( from => sub { return shift @tmplines; } );
+is( $b->line, 3, 'parse from code ref' );
+is( $b->count, 0, '' );
+is( $b->metafields, "#FORMAT: BEACON\n#BAZ: doz\n#FOO: bar\n#COUNT: 0\n" );
 
-$r->add( "y", "z|", "foo:bar" );
-is( $r->toBEACON(), "x|a|b|http://example.com\nx|y|z|foo:bar" );
+$b->parse( from => sub { die 'hard'; } );
+is( $b->errorcount, 1 );
+ok( $b->lasterror =~ /^hard/, 'dead input will not kill us' );
 
-$r = SeeAlso::Response->new( "x" );
-$r->add( "a||", "", "http://example.com|" );
-$r->add( "", "d", "foo:bar" );
-$r->add( "", "", "http://example.com" );
-is( $r->toBEACON(), join("\n",
-  "x|a|http://example.com",
-  "x||d|foo:bar",
-  "x|http://example.com"
-) );
+#my @tmplines = ( '#PREFIX: http://example.com/?q={ID}', 'a|foo:bar', )
 
-$r = SeeAlso::Response->new( "x" );
-$r->add( "", "", "" );
-$r->add( "a", "b" ); # no URI
-#$r->add( "", "", "http://example.com" );
-is( $r->toBEACON(), join("\n", 
-  "x|a|b",
- # "x||d|foo:bar",
- # "x|http://example.com"
-) );
+use Data::Validate::URI qw(is_uri);
+
+my @p = ( 
+    ["","","",""], "",
+    ["a","b","c","z"], "a|b|c|z",
+    ["a","b","c",""], "a|b|c",
+    ["a","b","","z"], "a|b||z",
+    ["a","b","",""], "a|b",
+    ["a","","",""], "a",
+    ["a","","","z"], "a|||z",
+    ["x","a||","","http://example.com|"], "x|a|http://example.com",
+    ["x","","|d","foo:bar"], "x||d|foo:bar",
+    ["x","|","","http://example.com"], "x|http://example.com",
+    ["","","","http://example.com"], ""
+);
+while (@p) {
+    my $in = shift @p;
+    my $out = shift @p;
+    my $line = Data::Beacon::beaconlink( @{$in} );
+    is( $line, $out, 'beaconlink' );
+
+    # TODO $in->[0] may be no URI at all, so it should not be valid then!
+    if ($out ne '' and is_uri($in->[3])) {
+        my $link2;
+        #print "$line\n";
+        $b->parse( \$line, 'link' => sub { $link2 = [ @_ ]; } );
+        is_deeply( $link2, $in );
+    } 
+}
