@@ -1,0 +1,7 @@
+#FORMAT:  BEACON
+#PREFIX: baz:
+
+a|http://example.com/foo
+a|http://example.com/bar
+
+

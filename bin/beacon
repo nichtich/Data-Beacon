@@ -12,7 +12,7 @@ our $VERSION = '0.1';
 
 use Getopt::Long;
 use Pod::Usage;
-use Data::Beacon qw(beaconlink);
+use Data::Beacon qw(getbeaconlink);
 
 my ($help, $man, $configfile, $file, $name, $testmode, $quiet);
 
@@ -44,7 +44,7 @@ $handlers{error} = undef if $quiet;
 
 my $cmd = shift @ARGV;
 if (defined $cmd && 
-    !($cmd =~ /^(dump|about|parse|list|init|insert|update|delete|query)$/)) {
+    !($cmd =~ /^(dump|expand|about|parse|list|init|insert|update|delete|query)$/)) {
     if (defined $file) {
         $name = $cmd;
         $cmd = shift @ARGV;
@@ -92,7 +92,7 @@ if ($cmd eq 'list' or $cmd eq 'init') {
 } elsif($cmd eq 'parse') {
     requirefile();
 } else {
-    if ($cmd =~ /^(dump|about|query)$/) {
+    if ($cmd =~ /^(expand|dump|about|query)$/) {
         $beaconstore ? requirename() : requirefile();
     } else { # delete|insert|update : require store and name
         requirestore();
@@ -123,11 +123,23 @@ if ($cmd eq 'parse') { # parse a file
 } elsif($cmd eq 'dump') { # dump a full, parsed beacon file
     print $beaconfile->metafields();
     $beaconfile->parse(
-        'link' => sub { print beaconlink(@_) . "\n"; }
+        'link' => sub { 
+  print getbeaconlink(@_) . "\n"; 
+        }
     );
     # TODO: we may warn on errors, wrong count etc.
+} elsif($cmd eq 'expand') { # dump a full, parsed beacon file
+    $beaconfile->parse(
+        'link' => sub {  # TODO: put this into the package and test it
+            my ($id, $label, $description, $to, $fullid, $fulluri) = @_;
+            my @link = $fullid;
+            push @link, $label if $label ne '' or $description ne '';
+            push @link, $description if $description ne '';
+            push @link, $fulluri;
+            print join('|', @link) . "\n";
+        }
+    );
 } # TODO other commands
-
 
 
 sub failed { # error handler
@@ -155,9 +167,10 @@ beacon [ <options> ] [ <command> ] [ <file> ]
  about <name>   show meta information about a file or stored beacon
  parse <file>   parse a full beacon file and print meta information
 
-The following
+The following commands are not fully implemented yet
 
  dump <name>    parse a beacon file or dump a stored beacon
+ expand <name>  parse and expand a beacon file or dump a stored beacon
 
  list           list names of all stored beacons
  init           initialize beacon store
