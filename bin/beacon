@@ -8,13 +8,13 @@ beacon - beacon command line client
 
 use strict;
 
-our $VERSION = '0.1';
+our $VERSION = '0.21';
 
 use Getopt::Long;
 use Pod::Usage;
-use Data::Beacon qw(getbeaconlink);
+use Data::Beacon;
 
-my ($help, $man, $configfile, $file, $name, $testmode, $quiet);
+my ($help, $man, $configfile, $file, $name, $testmode, $quiet, $linksmode);
 
 GetOptions(
     "config:s" => \$configfile,
@@ -24,6 +24,7 @@ GetOptions(
     "name:s" => \$name,
     "test" => \$testmode,
     "quiet" => \$quiet,
+    "links" => \$linksmode,
 ) or pod2usage(2);
 pod2usage(1) if $help or (@ARGV and $ARGV[0] eq 'help');
 pod2usage(-verbose => 2) if $man;
@@ -43,19 +44,26 @@ $handlers{error} = undef if $quiet;
 # additional sophisticated command line parsing follows
 
 my $cmd = shift @ARGV;
-if (defined $cmd && 
-    !($cmd =~ /^(dump|expand|about|parse|list|init|insert|update|delete|query)$/)) {
-    if (defined $file) {
-        $name = $cmd;
-        $cmd = shift @ARGV;
-    } elsif (defined $name) {
-        $file = $cmd;
-        $cmd = shift @ARGV;
-    } else {
-        $file = $cmd;
-        $cmd = "parse";
-        failed("File '$file' not found. Use -h for help") # misspelled command?
-            unless (-f $file);
+
+if (defined $cmd) {
+    if ($cmd eq 'links') {
+        $cmd = 'dump'; 
+        $linksmode = 1;
+    }
+    if (!($cmd =~ /^(dump|expand|about|parse|list|init|insert|update|delete|query)$/)) {
+        if (defined $file) {
+            $name = $cmd;
+            $cmd = shift @ARGV;
+        } elsif (defined $name) {
+            $file = $cmd;
+            $cmd = shift @ARGV;
+        } else {
+            $file = $cmd;
+            $cmd = "parse";
+            # misspelled command?
+            failed("File '$file' not found. Use -h for help")
+                unless ($file eq '-' or -f $file);
+        }
     }
 }
 unless ($cmd) {
@@ -115,17 +123,15 @@ if ($testmode) {
 
 if ($cmd eq 'parse') { # parse a file
     $beaconfile->parse();
-    print $beaconfile->metafields();
-    # TODO: we may warn on errors, wrong count etc.
+    print $beaconfile->metafields(); # extended metafields
+    # TODO: show whether there have been errors
 } elsif($cmd eq 'about') { # show info about a file or stored beacon
     # TODO: beaconstore
     print $beaconfile->metafields(); 
 } elsif($cmd eq 'dump') { # dump a full, parsed beacon file
-    print $beaconfile->metafields();
+    print $beaconfile->metafields() unless $linksmode;
     $beaconfile->parse(
-        'link' => sub { 
-  print getbeaconlink(@_) . "\n"; 
-        }
+        'link' => sub { print getbeaconlink(@_) . "\n"; }
     );
     # TODO: we may warn on errors, wrong count etc.
 } elsif($cmd eq 'expand') { # dump a full, parsed beacon file
@@ -156,21 +162,22 @@ beacon [ <options> ] [ <command> ] [ <file> ]
 
 =head1 ARGUMENTS
 
- -help          brief help message
- -man           full documentation with examples
- -file <name>   specify a file
+ -file <name>   specify a file (use '-' for stdin)
  -name <name>   specify a name
  -test          enable test mode (no stored beacon is modified)
  -config <file> specify config file
+ -links         only print links, without meta fields
  -quiet         suppress all error messages
+ -help          brief help message
+ -man           full documentation with examples
 
  about <name>   show meta information about a file or stored beacon
  parse <file>   parse a full beacon file and print meta information
+ dump <name>    parse a beacon file or dump a stored beacon
+ links <name>   same as dump, but omit meta fields
+ expand <name>  parse and expand a beacon file or dump a stored beacon
 
 The following commands are not fully implemented yet
-
- dump <name>    parse a beacon file or dump a stored beacon
- expand <name>  parse and expand a beacon file or dump a stored beacon
 
  list           list names of all stored beacons
  init           initialize beacon store

@@ -13,10 +13,10 @@ use Data::Validate::URI qw(is_uri);
 use Time::Piece;
 use Carp;
 
-our $VERSION = '0.20';
+our $VERSION = '0.2.1';
 
 use base 'Exporter';
-our @EXPORT_OK = qw(getbeaconlink parsebeaconlink);
+our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
 
 =head1 SYNOPSIS
 
@@ -118,7 +118,7 @@ sub meta {
             unless $key =~ /^\s*([a-zA-Z_-]+)\s*$/; 
         my $value = $list{$key};
         $key = uc($1);
-        $value =~ s/\s+|\s+$|\n//g;
+        $value =~ s/^\s+|\s+$|\n//g;
         if ($value eq '') { # empty field: unset
             croak 'You cannot unset meta field #FORMAT' if $key eq 'FORMAT';
             delete $self->{meta}->{$key};
@@ -146,9 +146,10 @@ sub meta {
                     # Note that this conversion does not trigger an error
                     # or warning, but may be dropped in a future version
                 } else {
-                    croak $key . ' meta value must be of form YYYY-MM-DDTHH:MM:SS'
-                        unless $value = Time::Piece->strptime( $value, 
-                                                               '%Y-%m-%dT%T' );
+                    $value =~ s/Z$//;
+                    croak $key . ' meta value must be of form YYYY-MM-DDTHH:MM:SSZ'
+                        unless $value = Time::Piece->strptime( 
+                            $value, '%Y-%m-%dT%T' );
                     $value = $value->datetime();
                 }
             } elsif ( $key eq 'FORMAT' ) {
@@ -348,7 +349,21 @@ sub nextlink {
 
 =head1 FUNCTIONS
 
-The following functions can be exported on request.
+The following functions are exported by default.
+is automatically exported 
+
+=head2 beacon ( [ $from ] { handler => coderef } )
+
+Shortcut for Data::Beacon-E<gt>new. To quickly parse a BEACON file, use:
+
+  use Data::Beacon;
+  beacon($file)->parse();
+
+=cut
+
+sub beacon {
+    return Data::Beacon->new( @_ );
+}
 
 =head2 parsebeaconlink ( $line [, $target ] )
 
@@ -475,6 +490,7 @@ sub _startparsing {
     $self->{fh} = undef;
     $self->{inputlines} = [];
     $self->{examples} = [];
+    $self->{expected_count} = undef;
 
     return unless defined $self->{from};
 
@@ -487,6 +503,8 @@ sub _startparsing {
             $self->_handle_error( "Unknown input $type", 0, '' );
             return;
         }
+    } elsif( $self->{from} eq '-' ) {
+        $self->{fh} = \*STDIN;
     } elsif(!(open $self->{fh}, $self->{from})) {
         $self->_handle_error( 'Failed to open ' . $self->{from}, 0, '' );
         return;

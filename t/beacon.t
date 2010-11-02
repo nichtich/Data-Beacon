@@ -11,6 +11,9 @@ my $r;
 my $b = new Data::Beacon();
 isa_ok($b,'Data::Beacon');
 
+$b = beacon();
+isa_ok($b,'Data::Beacon');
+
 is( $b->errorcount, 0 );
 
 # meta fields
@@ -37,7 +40,7 @@ foreach my $bad (@badmeta) {
     eval { $b->meta( @$bad ); }; ok( $@ );
     if (@$bad == 2 && $bad->[0] ne ' ') {
         my $line = '#' . join(': ',@$bad) . "\n";
-        my $c = Data::Beacon->new( \$line );
+        my $c = beacon( \$line );
         is( $c->errorcount, 1, 'bad meta field' );
     }
 }
@@ -78,12 +81,12 @@ $b->meta('count' => 7);
 is( $b->count, 7, 'count()' );
 is( $b->line, 0, 'line()' );
 
-$b = new Data::Beacon();
+$b = beacon();
 $b->meta( 'feed' => 'http://example.com', 'target' => 'http://example.com/{ID}' );
 $b->meta( 'target' => 'http://example.com/{LABEL}' );
 is( $b->meta('target'), 'http://example.com/{LABEL}' );
 
-is( Data::Beacon::parsebeaconlink( undef ), undef );
+is( parsebeaconlink( undef ), undef );
 
 # line parsing (invalid URI not checked)
 my %t = (
@@ -105,7 +108,7 @@ my %t = (
   "qid|lab|dsc|abc" => "URI part has not valid URI form",
 );
 while (my ($line, $link) = each(%t)) {
-    $r = Data::Beacon::parsebeaconlink( $line );
+    $r = parsebeaconlink( $line );
     is_deeply( $r, $link );
 }
 
@@ -113,17 +116,17 @@ while (my ($line, $link) = each(%t)) {
   "qid |u:ri" => ['qid','u:ri','',''] # TODO: add expansion here?
 );
 while (my ($line, $link) = each(%t)) {
-    $r = Data::Beacon::parsebeaconlink( $line, 'http://example.org/{ID}' );
+    $r = parsebeaconlink( $line, 'http://example.org/{ID}' );
     is_deeply( $r, $link, 'parse link with #TARGET' );
 }
 
 
 # file parsing
-$b = new Data::Beacon( "t/beacon1.txt" );
+$b = beacon( "t/beacon1.txt" );
 is_deeply( { $b->meta() }, {
   'FORMAT' => 'BEACON',
   'TARGET' => 'http://example.com/{ID}',
-  'FOO' => 'bar',
+  'FOO' => 'bar doz',
   'PREFIX' => 'x:'
 }, "parsing meta fields" );
 
@@ -131,22 +134,25 @@ is( $b->line, 6, 'line()' );
 $b->parse();
 is( $b->lasterror, "found too many parts (>4), divided by '|' characters" );
 
+
 is( $b->errorcount, 1 );
 
-eval { $b = new Data::Beacon( error => 'xxx' ); }; ok( $@, 'error handler' );
+eval { $b = beacon( error => 'xxx' ); }; ok( $@, 'error handler' );
 is( $b->errorcount, 1 );
 
-$b->parse("xxx"); #; ok( $@, 'error parsing' );
+$b->parse("~");
 is( $b->errorcount, 1 );
 
 my $e = $b->lasterror;
-is( $e, 'Failed to open xxx', 'lasterror, scalar context' );
+is( $e, 'Failed to open ~', 'lasterror, scalar context' );
 
 my @es = $b->lasterror;
-is_deeply( \@es, [ 'Failed to open xxx', 0, '' ], 'lasterror, list context' );
+is_deeply( \@es, [ 'Failed to open ~', 0, '' ], 'lasterror, list context' );
 
 $b->parse( { } );
 is( $b->errorcount, 1, 'cannot parse a hashref' );
+
+#exit;
 
 # string parsing
 $b->parse( \"x:from|x:to\n\n|comment" );
@@ -169,38 +175,38 @@ $b->parse( from => sub { die 'hard'; } );
 is( $b->errorcount, 1 );
 ok( $b->lasterror =~ /^hard/, 'dead input will not kill us' );
 
-$b = new Data::Beacon( \"#COUNT: 2\nf:rom|t:o" );
+$b = beacon( \"#COUNT: 2\nf:rom|t:o" );
 is( $b->count, 2 );
 ok( !$b->parse() );
 is( $b->lasterror, "expected 2 links, but got 1", "check expected link count" );
 
 # expected examples
-$b = new Data::Beacon( \"#EXAMPLES: a:b|c:d\na:b|to:1\nc:d|to:2" );
+$b = beacon( \"#EXAMPLES: a:b|c:d\na:b|to:1\nc:d|to:2" );
 ok( $b->parse() );
 
-$b = new Data::Beacon( \"#EXAMPLES: a:b|c\na:b|to:1" );
+$b = beacon( \"#EXAMPLES: a:b|c\na:b|to:1" );
 $b->parse();
 is_deeply( [ $b->lasterror ], [ 'examples not found: c',2,''], 'examples' );
 
-$b = new Data::Beacon( \"#EXAMPLES: a\n#PREFIX x:\na|to:1" );
+$b = beacon( \"#EXAMPLES: a\n#PREFIX x:\na|to:1" );
 ok( $b->parse() );
 
-$b = new Data::Beacon( \"#EXAMPLES: x:a\n#PREFIX x:\na|to:1" );
+$b = beacon( \"#EXAMPLES: x:a\n#PREFIX x:\na|to:1" );
 ok( $b->parse() );
 
 
 # ensure that IDs are URIs
-$b = new Data::Beacon( \"xxx |foo" );
+$b = beacon( \"xxx |foo" );
 $b->parse();
 is_deeply( [ $b->lasterror ], [ 'id must be URI: xxx',1,'xxx |foo' ], 
             'skipped non-URI id' );
 
 # pull parsing
-$b = new Data::Beacon( \"\nid:1|t:1\n|comment\n" );
+$b = beacon( \"\nid:1|t:1\n|comment\n" );
 is_deeply( $b->nextlink, ["id:1","","","t:1",'id:1','t:1'] );
 is_deeply( $b->nextlink, undef );
 
-$b = new Data::Beacon( \"id:1|t:1\na b|\nid:2|t:2" );
+$b = beacon( \"id:1|t:1\na b|\nid:2|t:2" );
 is_deeply( $b->nextlink, ["id:1","","","t:1",'id:1','t:1'] );
 is_deeply( $b->nextlink, ["id:2","","","t:2",'id:2','t:2'] );
 is( $b->nextlink, undef );
@@ -220,7 +226,7 @@ my @p = (
 );
 while (@p) {
     my $in = shift @p;
-    is( Data::Beacon::getbeaconlink( @{$in} ), '', 'getbeaconlink = ""');
+    is( getbeaconlink( @{$in} ), '', 'getbeaconlink = ""');
 }
 
 @p = (
@@ -231,15 +237,15 @@ while (@p) {
 while (@p) {
     my $in = shift @p;
     my $out = shift @p;
-    my $line = Data::Beacon::getbeaconlink( @{$in} );
+    my $line = getbeaconlink( @{$in} );
     is( $line, $out, 'getbeaconlink');
 
-    my $line = "#PREFIX: http://example.org/\n$line";
-    $b = new Data::Beacon( \$line );
+    $line = "#PREFIX: http://example.org/\n$line";
+    $b = beacon( \$line );
     ok( !$b->parse ); # TARGET is not an URI
 
     $line = "#TARGET: foo:{ID}\n$line";
-    $b = new Data::Beacon( \$line );
+    $b = beacon( \$line );
     my $l = $b->nextlink();
 
     push @$in, "http://example.org/".$in->[0];
@@ -259,12 +265,12 @@ while (@p) {
 while (@p) {
     my $in = shift @p;
     my $out = shift @p;
-    my $line = Data::Beacon::getbeaconlink( @{$in} );
+    my $line = getbeaconlink( @{$in} );
     is( $line, $out, 'getbeaconlink');
 
     @$in = map { s/\|//g; $_; } @$in;
-    my $line = "#PREFIX: http://example.org/\n$line";
-    $b = new Data::Beacon( \$line );
+    $line = "#PREFIX: http://example.org/\n$line";
+    $b = beacon( \$line );
 
     my $l = $b->nextlink();
     pop @$l; # fullid
@@ -274,35 +280,35 @@ while (@p) {
 }
 
 # ignore additional params
-is('x', Data::Beacon::getbeaconlink('x','','','','foo','bar'));
+is('x', getbeaconlink('x','','','','foo','bar'));
 
 # link expansion
 
-$b = new Data::Beacon( \"#TARGET: http://foo.org/{LABEL}\nf:rom|x" );
+$b = beacon( \"#TARGET: http://foo.org/{LABEL}\nf:rom|x" );
 is_deeply( $b->nextlink, ['f:rom','x','','','f:rom','http://foo.org/x'] );
 
-$b = new Data::Beacon( \"#TARGET: http://foo.org/{ID}\nx:y" );
+$b = beacon( \"#TARGET: http://foo.org/{ID}\nx:y" );
 is_deeply( $b->nextlink, ['x:y','','','','x:y','http://foo.org/x:y'] );
 
-$b = new Data::Beacon( \"#PREFIX: u:\n#TARGET: z:{ID}\n\$1" );
+$b = beacon( \"#PREFIX: u:\n#TARGET: z:{ID}\n\$1" );
 is_deeply( $b->nextlink, ['$1','','','','u:$1','z:$1'] );
 
 use Data::Dumper;
 print Dumper( $b->nextlink() );
 
-$b = new Data::Beacon( \"a:b|c:d" );
+$b = beacon( \"a:b|c:d" );
 is_deeply( $b->nextlink, ['a:b','','','c:d','a:b','c:d'] );
 
-$b = new Data::Beacon( \"#TARGET: f:{ID}\na:b|c:d" );
+$b = beacon( \"#TARGET: f:{ID}\na:b|c:d" );
 is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:a:b'],
     'TARGET changes parsing' );
 
-$b = new Data::Beacon( \"#TARGET: f:{LABEL}\na:b|c:d" );
+$b = beacon( \"#TARGET: f:{LABEL}\na:b|c:d" );
 is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:c:d'],
     'TARGET changes parsing' );
 
 # croaking link handler
-$b = new Data::Beacon( \"#TARGET: f:{LABEL}\na:b|c:d", 'link' => sub { die 'bad' } );
+$b = beacon( \"#TARGET: f:{LABEL}\na:b|c:d", 'link' => sub { die 'bad' } );
 ok(! $b->parse );
 ok( $b->lasterror =~ /^link handler died: bad/, 'dead link handler' );
 

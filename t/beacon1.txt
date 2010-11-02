@@ -1,5 +1,5 @@
 #FORMAT: BEACON
-#FOO= bar
+#FOO= bar doz
 
 #TARGET: http://example.com/{ID}
 #PREFIX: x:
