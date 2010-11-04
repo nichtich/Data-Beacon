@@ -663,6 +663,11 @@ sub _parseline {
 
 __END__
 
+=head1 DEVELOPMENT
+
+For the latest development snapshot, bug reports, feature requests,
+and such, visit http://github.com/nichtich/p5-data-beacon
+
 =head1 AUTHOR
 
 Jakob Voss C<< <jakob.voss@gbv.de> >>

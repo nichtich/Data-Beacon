@@ -6,7 +6,8 @@ DESCRIPTION
     A command client script named 'beacon' is also included.
 
 INSTALLATION
-    Manually from the source:
+    You can either get releases from CPAN, or get the latest development
+    version from github. To manually install from the sources, use:
 
     $ perl Makefile.PL
     $ make test
