@@ -152,7 +152,6 @@ is_deeply( \@es, [ 'Failed to open ~', 0, '' ], 'lasterror, list context' );
 $b->parse( { } );
 is( $b->errorcount, 1, 'cannot parse a hashref' );
 
-#exit;
 
 # string parsing
 $b->parse( \"x:from|x:to\n\n|comment" );
@@ -312,3 +311,14 @@ $b = beacon( \"#TARGET: f:{LABEL}\na:b|c:d", 'link' => sub { die 'bad' } );
 ok(! $b->parse );
 ok( $b->lasterror =~ /^link handler died: bad/, 'dead link handler' );
 
+# pre meta fields
+$b = beacon( 't/beacon1.txt', 'pre' => { 'BAR' => 'doz', 'prefix' => 'y:' } );
+is( $b->meta('bar'), 'doz', 'pre meta fields' );
+is( $b->meta('prefix'), 'x:' );
+
+$b->parse( \"#PREFIX: z:" );
+is( $b->meta('bar'), 'doz' );
+is( $b->meta('prefix'), 'z:' );
+
+$b->parse( \"#PREFIX: z:", pre => undef );
+is( $b->meta('bar'), undef );

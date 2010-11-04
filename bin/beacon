@@ -8,23 +8,26 @@ beacon - beacon command line client
 
 use strict;
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 
 use Getopt::Long;
 use Pod::Usage;
 use Data::Beacon;
 
-my ($help, $man, $configfile, $file, $name, $testmode, $quiet, $linksmode);
+my ($help, $man, $configfile, $file, $name, $testmode, $quiet, $linksmode,
+    $premeta);
 
 GetOptions(
     "config:s" => \$configfile,
     "help|?" => \$help,
     "man" => \$man,
+    "pre:s" => \$premeta,
     "file:s" => \$file,
     "name:s" => \$name,
     "test" => \$testmode,
     "quiet" => \$quiet,
     "links" => \$linksmode,
+    # -time : use #TIMESTAMP from input file
 ) or pod2usage(2);
 pod2usage(1) if $help or (@ARGV and $ARGV[0] eq 'help');
 pod2usage(-verbose => 2) if $man;
@@ -67,19 +70,24 @@ if (defined $cmd) {
     }
 }
 unless ($cmd) {
-    if (defined $file) {
-        $cmd = 'parse';
-    } elsif (defined $name) {
+    if (defined $file or defined $name) {
         $cmd = 'about';
     } else {
         failed("Please specify at least a command, name, file, or -h for help\n");
     }
 }
 
+# parse the metafile first
+if (defined $premeta) {
+    my $m = beacon($premeta);
+    failed( $m->lasterror ) if $m->errorcount;
+    $handlers{pre} = { $m->meta() };
+}
+
 sub requirefile {
     $file = shift @ARGV unless defined $file;
     failed("Please specifiy a file to parse") unless defined $file;
-    $beaconfile = new Data::Beacon( $file, %handlers );
+    $beaconfile = beacon( $file, %handlers );
 }
 
 sub requirename {
@@ -117,6 +125,8 @@ if ($testmode) {
     print "  file:    $file\n";
     print "  name:    $name\n";
     print "  config:  $configfile\n";
+    print "  pre:     $premeta\n" if defined $premeta;
+    exit; # TODO: we could perform some more action but read-only
 }
 
 # Now finally do something
@@ -145,12 +155,12 @@ if ($cmd eq 'parse') { # parse a file
             print join('|', @link) . "\n";
         }
     );
-} # TODO other commands
+} # TODO: implement other commands
 
 
 sub failed { # error handler
     my $msg = shift;
-    $msg =~ s/\n$//;
+    $msg =~ s/\n$//g;
     $msg =~ s/ at .+ line \d+//;
     print STDERR "$msg!\n";
     exit(1);
@@ -163,30 +173,50 @@ beacon [ <options> ] [ <command> ] [ <file> ]
 =head1 ARGUMENTS
 
  -file <name>   specify a file (use '-' for stdin)
- -name <name>   specify a name
- -test          enable test mode (no stored beacon is modified)
+
+ -links       only print links, without meta fields
+ -quiet       suppress all error messages
+ -test        enable test mode (no stored beacon is modified)
+ -help        brief help message
+ -pre <file>  start with meta fields from a given beacon file
+ -man         full documentation with examples
+
+ about <name>    show meta information about a file or stored beacon
+ parse <file>    parse a full beacon file and print meta information
+ dump <name>     parse a beacon file or dump a stored beacon
+ links <name>    same as dump, but omit meta fields
+ expand <name>   parse and expand a beacon file or dump a stored beacon
+
+The following options and commands are not fully implemented yet, but 
+planned to support storing and modifying beacons in a database or other store.
+
  -config <file> specify config file
- -links         only print links, without meta fields
- -quiet         suppress all error messages
- -help          brief help message
- -man           full documentation with examples
+ -name <name>   specify a name (for stored beacons)
 
- about <name>   show meta information about a file or stored beacon
- parse <file>   parse a full beacon file and print meta information
- dump <name>    parse a beacon file or dump a stored beacon
- links <name>   same as dump, but omit meta fields
- expand <name>  parse and expand a beacon file or dump a stored beacon
-
-The following commands are not fully implemented yet
-
- list           list names of all stored beacons
  init           initialize beacon store
-
+ list           list names of all stored beacons
  insert <name> <file>  insert a new beacon from file to a store
  update <name> <file>  replace a beacon from file to a store
  delete <name>         remove a beacon from a store
 
  query <name> <id>     query a beacon (stored of file) for an id
+
+=head1 DESCRIPTION
+
+This command line script manages beacon files. You can use it for parsing,
+validating, expanding, and storing beacon files in a database (the latter
+not implemented yet).
+
+The first command line argument is treated as command
+or as [file] name. To simply show the meta fields of a beacon file (command
+'about', you can use any one of the following:
+
+  beacon myfile
+  beacon -file myfile
+  beacon -file myfile about
+  beacon about myfile
+
+
 
 =head1 NOTE
 

@@ -227,7 +227,7 @@ sub errorcount {
 
 Return all meta fields, serialized and sorted as string. Althugh the order of
 fields is irrelevant, but this implementation always returns the same fields
-in same order.
+in same order. To get all meta fields as hash, use the 'meta' method.
 
 =cut
 
@@ -247,7 +247,7 @@ sub metafields {
     return @lines ? join ("\n", @lines) . "\n" : "";
 }
 
-=head2 parse ( [ $from ] { handler => coderef } )
+=head2 parse ( [ $from ] { handler => coderef | pre => $hashref } )
 
 Parse all remaining links (push parsing). If provided a C<from> parameter,
 this starts a new Beacon. That means the following three are equivalent:
@@ -261,6 +261,9 @@ this starts a new Beacon. That means the following three are equivalent:
 
 If C<from> is a scalar, it is used as file to parse from. Alternatively you
 can supply a string reference, or a code reference.
+
+The C<pre> argument can be used to set some meta fields before parsing starts.
+These fields are cached and reused every time you call C<parse>.
 
 By default, all errors are silently ignored, unless you specifiy an C<error>
 handler. The last error can be retrieved with the C<lasterror> method and the
@@ -444,10 +447,11 @@ sub getbeaconlink {
 
 If you directly call any of this methods, puppies will die.
 
-=head2 _initparams ( [ $from ] { handler => coderef } )
+=head2 _initparams ( [ $from ] { handler => coderef | option => value } )
 
 Initialize parameters as passed to C<new> or C<parse>. Known parameters
-are C<from>, C<error>, and C<link>. C<from> is not checked here.
+are C<from>, C<error>, and C<link> (C<from> is not checked here). In 
+addition you cann pass C<premeta>
 
 =cut
 
@@ -466,6 +470,14 @@ sub _initparams {
             unless ref($param{$name}) and ref($param{$name}) eq 'CODE';
         $self->{$name.'_handler'} = $param{$name};
     }
+
+    if ( defined $param{pre} ) {
+        croak "pre option must be a hash reference"
+            unless ref($param{pre}) and ref($param{pre}) eq 'HASH';
+        $self->{pre} = $param{pre};
+    } elsif ( exists $param{pre} ) {
+        $self->{pre} = undef;
+    }
 }
 
 =head2 _startparsing
@@ -482,7 +494,9 @@ stored as lookahead.
 sub _startparsing {
     my $self = shift;
 
+    # we do not init $self->{meta} because it is set in initparams;
     $self->{meta} = { 'FORMAT' => 'BEACON' };
+    $self->meta( %{ $self->{pre} } ) if $self->{pre};
     $self->{line} = 0;
     $self->{errorcount} = 0;
     $self->{lasterror} = [];
