@@ -7,7 +7,9 @@ DESCRIPTION
 
 INSTALLATION
     You can either get releases from CPAN, or get the latest development
-    version from github. To manually install from the sources, use:
+    version from github at http://github.com/nichtich/p5-data-beacon. 
+
+    To manually install from the sources, use:
 
     $ perl Makefile.PL
     $ make test
@@ -24,3 +26,10 @@ BUGS
 AUTHOR
     Jakob Voss <jakob.voss@gbv.de>
 
+LICENSE
+    This library is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself, either Perl version 5.8.8 or, at
+    your option, any later version of Perl 5 you may have available.
+
+    In addition you may fork this library under the terms of the 
+    GNU Affero General Public License.

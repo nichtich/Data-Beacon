@@ -22,5 +22,6 @@ use ExtUtils::MakeMaker;
     depend          => {
         Makefile => '$(VERSION_FROM)'
     },
-    EXE_FILES       => [ 'bin/beacon' ]
+    EXE_FILES       => [ 'bin/beacon' ],
+    LICENSE         => 'perl'
 );
