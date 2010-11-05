@@ -8,7 +8,7 @@ beacon - beacon command line client
 
 use strict;
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 use Getopt::Long;
 use Pod::Usage;
@@ -26,7 +26,6 @@ GetOptions(
     "name:s" => \$name,
     "test" => \$testmode,
     "quiet" => \$quiet,
-    "links" => \$linksmode,
     # -time : use #TIMESTAMP from input file
 ) or pod2usage(2);
 pod2usage(1) if $help or (@ARGV and $ARGV[0] eq 'help');
@@ -168,60 +167,92 @@ sub failed { # error handler
 
 =head1 SYNOPSIS
 
-beacon [ <options> ] [ <command> ] [ <file> ]
+beacon [ <options> ] [ <command> <name> ] [ <file> ]
 
 =head1 ARGUMENTS
 
- -file <name>   specify a file (use '-' for stdin)
+  -file <name>   specify a BEACON file (use '-' for stdin)
+  -name <name>   specify a name (for stored beacons)
+  -pre <file>    start with meta fields from a given BEACON file
+  -quiet         suppress all error messages
+  -test          enable test mode (no stored beacon is modified)
+  -help          brief help message
+  -man           full documentation with examples
 
- -links       only print links, without meta fields
- -quiet       suppress all error messages
- -test        enable test mode (no stored beacon is modified)
- -help        brief help message
- -pre <file>  start with meta fields from a given beacon file
- -man         full documentation with examples
+  about  <name>  show meta information about a file or stored beacon
+  parse  <name>  parse a full BEACON file and print meta information
+  dump   <name>  parse a BEACON file or dump a stored beacon
+  links  <name>  only print links, without meta fields
+  expand <name>  parse and expand a BEACON file or dump a stored beacon
 
- about <name>    show meta information about a file or stored beacon
- parse <file>    parse a full beacon file and print meta information
- dump <name>     parse a beacon file or dump a stored beacon
- links <name>    same as dump, but omit meta fields
- expand <name>   parse and expand a beacon file or dump a stored beacon
+=head1 DESCRIPTION
 
-The following options and commands are not fully implemented yet, but 
-planned to support storing and modifying beacons in a database or other store.
+This command line script manages beacon files. You can use it for parsing,
+validating, expanding, and storing beacon files.
 
- -config <file> specify config file
- -name <name>   specify a name (for stored beacons)
+=head2 COMMANDS
 
- init           initialize beacon store
- list           list names of all stored beacons
+The first command line argument is treated as command or as [file]name,
+if it does not match a known command. The following commands are recognized:
+
+=over
+
+=item about
+
+Print the meta fields. This command is the default, if no command is specified.
+Parsing BEACON file with this commands stops at the first non-meta line, so 
+errors in the links will not be detected.
+
+=item parse
+
+Print the meta fields, possibly extended by automatically generated fields,
+such as C<COUNT> after parsing the full BEACON file. Use this command to
+validate a BEACON file.
+
+=item links
+
+Parse a BEACON file and print all valid links.
+
+=item dump
+
+Parse a BEACON file and print all meta fields (possibly extended), followed
+by all valid links.
+
+=item expand
+
+Print all valid links in fully expanded form, without meta fields.
+
+=back
+
+The following arguments and commands are planned, but not implemented yet:
+
+  -config <file> specify config file, e.g. for database connection
+
+ init                  initialize beacon store
+ list                  list names of all stored beacons
  insert <name> <file>  insert a new beacon from file to a store
  update <name> <file>  replace a beacon from file to a store
  delete <name>         remove a beacon from a store
 
  query <name> <id>     query a beacon (stored of file) for an id
 
-=head1 DESCRIPTION
+=head1 EXAMPLES
 
-This command line script manages beacon files. You can use it for parsing,
-validating, expanding, and storing beacon files in a database (the latter
-not implemented yet).
-
-The first command line argument is treated as command
-or as [file] name. To simply show the meta fields of a beacon file (command
-'about', you can use any one of the following:
+Show the meta fields of a BEACON file (command C<about>):
 
   beacon myfile
   beacon -file myfile
   beacon -file myfile about
   beacon about myfile
 
+Validate a BEACON and show errors only:
 
+  beacon parse myfile > /dev/null
 
 =head1 NOTE
 
-The command name 'beacon' clashes with a tool of same name from the
-ax25-tools package (L<http://www.linux-ax25.org/>. If you need to use
+The command name C<beacon> clashes with a tool of same name from the
+ax25-tools package (L<http://www.linux-ax25.org/>). If you need to use
 beacon together with hamradio, you need to rename one of the two scripts.
 
 =head1 AUTHOR
