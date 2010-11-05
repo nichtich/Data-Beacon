@@ -23,6 +23,7 @@ our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
   use Data::Beacon;
 
   $beacon = new SeeAlso::Beacon( $beaconfile );
+  $beacon = beacon( $beaconfile ); # equivalent
 
   $beacon->meta();                                   # get all meta fields
   $beacon->meta( 'DESCRIPTION' => 'my best links' ); # set meta fields
@@ -48,25 +49,30 @@ dedicated error handling.
 
 =head2 PARSING
 
-You can parse BEACON from a file this way, using a link handler callback:
+You can parse BEACON format either by push parsing with handler callbacks:
 
-  my $beacon = new SeeAlso::Beacon( $filename );
+  my $beacon = beacon( $file );
   $beacon->parse( 'link' => \link_handler );
   $errors = $beacon->errorcount;
 
-Alternatively you can use the parser as iterator:
+or by pull parsing as iterator:
 
-  my $beacon = new SeeAlso::Beacon( $filename );
-  while (my $link = $beacon->nextlink()) {
-      if (ref($link)) {
-          my ($id, $label, $description, $to, $fullid, $fulluri) = @$link;
-      } else {
-          my $error = $link;
-      }
+  my $beacon = beacon( $file );
+  while ( my $link = $beacon->nextlink() ) {
+      my ($id, $label, $description, $to, $fullid, $fulluri) = @$link;
   }
 
 Instead of a filename, you can also provide a scalar reference, to parse
-from a string.
+from a string. The meta fields are parsed immediately:
+
+  my $beacon = beacon( $file );
+  print $beacon->metafields . "\n";
+  my $errors = $beacon->errorcount;
+
+To quickly parse a BEACON file:
+
+  use Data::Beacon;
+  beacon($file)->parse();
 
 =head1 METHODS
 
@@ -274,7 +280,29 @@ Finally, the C<link> handler can be a code reference to a method that is
 called for each link (that is each line in the input that contains a valid
 link). The following arguments are passed to the handler:
 
- ( $id, $label, $description, $to, $fullid, $fulluri )
+=over
+
+=item C<$id>
+
+Link source as given in BEACON format.
+
+=item C<$label>
+
+=item C<$description>
+
+=item C<$to>
+
+Links target as given in BEACON format.
+
+=item C<$fullid>
+
+Expanded link source. This is always an URI.
+
+=item C<$fulluri>
+
+Expanded link target. This is always an URI.
+
+=back
 
 Please note that C<$label>, C<$description>, and C<$to> may be the empty
 string, while C<$fullid> and C<$fulluri> are URIs.
@@ -353,14 +381,10 @@ sub nextlink {
 =head1 FUNCTIONS
 
 The following functions are exported by default.
-is automatically exported 
 
 =head2 beacon ( [ $from ] { handler => coderef } )
 
-Shortcut for Data::Beacon-E<gt>new. To quickly parse a BEACON file, use:
-
-  use Data::Beacon;
-  beacon($file)->parse();
+Shortcut for C<Data::Beacon-E<gt>new>.
 
 =cut
 
@@ -372,11 +396,10 @@ sub beacon {
 
 Parses a line, interpreted as link in BEACON format. Unless a target parameter
 is given, the last part of the line is used as link destination, if it looks 
-like an URI.
-
-Returns an array reference with four values on success, an empty array reference for empty linkes, an error string on failure, or undef is the supplied line was
-not defined. This method does not check whether the query identifier is a valid
-URI, because it may be expanded by a prefix.
+like an URI. Returns an array reference with four values on success, an empty 
+array reference for empty linkes, an error string on failure, or undef is the 
+supplied line was not defined. This method does not check whether the query 
+identifier is a valid URI, because it may be expanded by a prefix.
 
 =cut
 
