@@ -23,5 +23,13 @@ use ExtUtils::MakeMaker;
         Makefile => '$(VERSION_FROM)'
     },
     EXE_FILES       => [ 'bin/beacon' ],
-    LICENSE         => 'perl'
+    LICENSE         => 'perl',
+    META_MERGE => {
+        resources => {
+            license => 'http://dev.perl.org/licenses/',
+            homepage => 'http://github.com/nichtich/p5-data-beacon',
+            bugtracker => 'http://github.com/nichtich/p5-data-beacon/issues',
+            repository => 'http://github.com/toddr/p5-data-beacon',
+        }
+    }
 );
