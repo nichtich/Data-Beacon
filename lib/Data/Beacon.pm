@@ -13,7 +13,7 @@ use Data::Validate::URI qw(is_uri);
 use Time::Piece;
 use Carp;
 
-our $VERSION = '0.2.1';
+our $VERSION = '0.2.2';
 
 use base 'Exporter';
 our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
@@ -49,18 +49,18 @@ dedicated error handling.
 
 =head2 PARSING
 
-You can parse BEACON format either by push parsing with handler callbacks:
-
-  my $beacon = beacon( $file );
-  $beacon->parse( 'link' => \link_handler );
-  $errors = $beacon->errorcount;
-
-or by pull parsing as iterator:
+You can parse BEACON format either as iterator:
 
   my $beacon = beacon( $file );
   while ( my $link = $beacon->nextlink() ) {
       my ($id, $label, $description, $to, $fullid, $fulluri) = @$link;
   }
+
+by push parsing with handler callbacks:
+
+  my $beacon = beacon( $file );
+  $beacon->parse( 'link' => \link_handler );
+  $errors = $beacon->errorcount;
 
 Instead of a filename, you can also provide a scalar reference, to parse
 from a string. The meta fields are parsed immediately:
@@ -73,6 +73,22 @@ To quickly parse a BEACON file:
 
   use Data::Beacon;
   beacon($file)->parse();
+
+=head2 SERIALIZING
+
+To only serialize BEACON meta fields, create a new Beacon object and call
+the C<metafields> method:
+
+  my $beacon = beacon( %my_meta_fields );
+  print $beacon->metafields;
+
+To serialize links in BEACON format, you can use the C<getbeaconlink> 
+function that is exported by this package. To parse a BEACON file and
+print all valid links:
+
+  beacon( $filename )->parse(
+      'link' => sub { print getbeaconlink(@_) . "\n"; }
+  );
 
 =head1 METHODS
 
@@ -148,7 +164,7 @@ sub meta {
                     unless is_uri($value);
             } elsif ( $key =~ /^(REVISIT|TIMESTAMP)$/) {
                 if ($value =~ /^[0-9]+$/) { # seconds since epoch
-                    $value = gmtime($value)->datetime(); 
+                    $value = gmtime($value)->datetime() . 'Z'; 
                     # Note that this conversion does not trigger an error
                     # or warning, but may be dropped in a future version
                 } else {
@@ -253,7 +269,7 @@ sub metafields {
     return @lines ? join ("\n", @lines) . "\n" : "";
 }
 
-=head2 parse ( [ $from ] { handler => coderef | pre => $hashref } )
+=head2 parse ( [ $from ] { handler => coderef | option => $value } )
 
 Parse all remaining links (push parsing). If provided a C<from> parameter,
 this starts a new Beacon. That means the following three are equivalent:
@@ -268,8 +284,11 @@ this starts a new Beacon. That means the following three are equivalent:
 If C<from> is a scalar, it is used as file to parse from. Alternatively you
 can supply a string reference, or a code reference.
 
-The C<pre> argument can be used to set some meta fields before parsing starts.
+The C<pre> option can be used to set some meta fields before parsing starts.
 These fields are cached and reused every time you call C<parse>.
+
+If the C<mtime> option is given, the TIMESTAMP meta value will be initialized
+as last modification time of the given file.
 
 By default, all errors are silently ignored, unless you specifiy an C<error>
 handler. The last error can be retrieved with the C<lasterror> method and the
@@ -474,7 +493,7 @@ If you directly call any of this methods, puppies will die.
 
 Initialize parameters as passed to C<new> or C<parse>. Known parameters
 are C<from>, C<error>, and C<link> (C<from> is not checked here). In 
-addition you cann pass C<premeta>
+addition you cann pass C<pre> and C<mtime> as options.
 
 =cut
 
@@ -501,6 +520,8 @@ sub _initparams {
     } elsif ( exists $param{pre} ) {
         $self->{pre} = undef;
     }
+
+    $self->{mtime} = $param{mtime};
 }
 
 =head2 _startparsing
@@ -542,9 +563,17 @@ sub _startparsing {
         }
     } elsif( $self->{from} eq '-' ) {
         $self->{fh} = \*STDIN;
-    } elsif(!(open $self->{fh}, $self->{from})) {
-        $self->_handle_error( 'Failed to open ' . $self->{from}, 0, '' );
-        return;
+    } else {
+        if(!(open $self->{fh}, $self->{from})) {
+            $self->_handle_error( 'Failed to open ' . $self->{from}, 0, '' );
+            return;
+        }
+    }
+
+    # initlialize TIMESTAMP
+    if ($self->{mtime}) {
+        my @stat = stat( $self->{from} );
+        $self->meta('TIMESTAMP', gmtime( $stat[9] )->datetime() . 'Z' );
     }
 
     # start parsing
@@ -688,8 +717,13 @@ __END__
 
 =head1 DEVELOPMENT
 
-For the latest development snapshot, bug reports, feature requests,
-and such, visit http://github.com/nichtich/p5-data-beacon
+Please visit http://github.com/nichtich/p5-data-beacon for the latest
+development snapshot, bug reports, feature requests, and such.
+
+=head1 SEE ALSO
+
+See also L<SeeAlso::Server> for an API to exchange single sets of 
+beacon links, based on the same source identifier.
 
 =head1 AUTHOR
 

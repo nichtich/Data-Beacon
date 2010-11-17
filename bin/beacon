@@ -14,8 +14,10 @@ use Getopt::Long;
 use Pod::Usage;
 use Data::Beacon;
 
-my ($help, $man, $configfile, $file, $name, $testmode, $quiet, $linksmode,
-    $premeta);
+my ($configfile, $file, $name, $testmode, $linksmode, $premeta, $mtime,
+    $help, $man, $quiet);
+my %commands = map { $_ => 1 }
+    qw(dump expand about parse list init insert update upsert delete query);
 
 GetOptions(
     "config:s" => \$configfile,
@@ -26,7 +28,7 @@ GetOptions(
     "name:s" => \$name,
     "test" => \$testmode,
     "quiet" => \$quiet,
-    # -time : use #TIMESTAMP from input file
+    "mtime" => \$mtime,
 ) or pod2usage(2);
 pod2usage(1) if $help or (@ARGV and $ARGV[0] eq 'help');
 pod2usage(-verbose => 2) if $man;
@@ -52,7 +54,7 @@ if (defined $cmd) {
         $cmd = 'dump'; 
         $linksmode = 1;
     }
-    if (!($cmd =~ /^(dump|expand|about|parse|list|init|insert|update|delete|query)$/)) {
+    unless ($commands{$cmd}) {
         if (defined $file) {
             $name = $cmd;
             $cmd = shift @ARGV;
@@ -86,6 +88,7 @@ if (defined $premeta) {
 sub requirefile {
     $file = shift @ARGV unless defined $file;
     failed("Please specifiy a file to parse") unless defined $file;
+    $handlers{mtime} = $file if $mtime;
     $beaconfile = beacon( $file, %handlers );
 }
 
@@ -109,7 +112,7 @@ if ($cmd eq 'list' or $cmd eq 'init') {
 } else {
     if ($cmd =~ /^(expand|dump|about|query)$/) {
         $beaconstore ? requirename() : requirefile();
-    } else { # delete|insert|update : require store and name
+    } else { # delete|insert|update|upsert : require store and name
         requirestore();
         requirename();
         requirefile() if $cmd =~ /^(insert|update)$/;
@@ -154,7 +157,7 @@ if ($cmd eq 'parse') { # parse a file
             print join('|', @link) . "\n";
         }
     );
-} # TODO: implement other commands
+} # TODO: implement other commands: init, list, insert, update, delete
 
 
 sub failed { # error handler
@@ -174,8 +177,9 @@ beacon [ <options> ] [ <command> <name> ] [ <file> ]
   -file <name>   specify a BEACON file (use '-' for stdin)
   -name <name>   specify a name (for stored beacons)
   -pre <file>    start with meta fields from a given BEACON file
-  -quiet         suppress all error messages
+  -mtime         use file's modification time if no TIMESTAMP given
   -test          enable test mode (no stored beacon is modified)
+  -quiet         suppress all error messages
   -help          brief help message
   -man           full documentation with examples
 
@@ -215,8 +219,8 @@ Parse a BEACON file and print all valid links.
 
 =item dump
 
-Parse a BEACON file and print all meta fields (possibly extended), followed
-by all valid links.
+Parse a BEACON file and print all meta fields (possibly extended),
+followed by all valid links.
 
 =item expand
 
@@ -240,14 +244,19 @@ The following arguments and commands are planned, but not implemented yet:
 
 Show the meta fields of a BEACON file (command C<about>):
 
-  beacon myfile
+  beacon about myfile
+
+Alernatively you can say one of:
+
   beacon -file myfile
   beacon -file myfile about
   beacon about myfile
 
-Validate a BEACON and show errors only:
+Validate a BEACON file and show errors only:
 
   beacon parse myfile > /dev/null
+
+  beacon -pre myfields -mtime files ....TODO
 
 =head1 NOTE
 
