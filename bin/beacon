@@ -15,7 +15,7 @@ use Pod::Usage;
 use Data::Beacon;
 
 my ($configfile, $file, $name, $testmode, $linksmode, $premeta, $mtime,
-    $help, $man, $quiet);
+    $help, $man, $quiet, $query);
 my %commands = map { $_ => 1 }
     qw(dump expand about parse list init insert update upsert delete query);
 
@@ -112,6 +112,10 @@ if ($cmd eq 'list' or $cmd eq 'init') {
 } else {
     if ($cmd =~ /^(expand|dump|about|query)$/) {
         $beaconstore ? requirename() : requirefile();
+        if ( $cmd eq 'query' ) {
+            $query = shift @ARGV;
+            failed("Please specifiy an id to query for!") unless defined $query;
+        };
     } else { # delete|insert|update|upsert : require store and name
         requirestore();
         requirename();
@@ -128,25 +132,28 @@ if ($testmode) {
     print "  name:    $name\n";
     print "  config:  $configfile\n";
     print "  pre:     $premeta\n" if defined $premeta;
+    print "  query:   $query\n" if $cmd eq 'query';
     exit; # TODO: we could perform some more action but read-only
 }
 
 # Now finally do something
 
-if ($cmd eq 'parse') { # parse a file
+if ( $cmd eq 'parse' ) { # parse a file
     $beaconfile->parse();
     print $beaconfile->metafields(); # extended metafields
     # TODO: show whether there have been errors
-} elsif($cmd eq 'about') { # show info about a file or stored beacon
-    # TODO: beaconstore
+} elsif( $cmd eq 'about' ) { # show info about a file or stored beacon
+    # TODO: support beaconstore
     print $beaconfile->metafields(); 
-} elsif($cmd eq 'dump') { # dump a full, parsed beacon file
+} elsif( $cmd eq 'dump' ) { # dump a full, parsed beacon file
+    # TODO: support beaconstore
     print $beaconfile->metafields() unless $linksmode;
     $beaconfile->parse(
         'link' => sub { print getbeaconlink(@_) . "\n"; }
     );
     # TODO: we may warn on errors, wrong count etc.
-} elsif($cmd eq 'expand') { # dump a full, parsed beacon file
+} elsif( $cmd eq 'expand' ) { # dump a full, parsed beacon file
+    # TODO: support beaconstore
     $beaconfile->parse(
         'link' => sub {  # TODO: put this into the package and test it
             my ($id, $label, $description, $to, $fullid, $fulluri) = @_;
@@ -155,6 +162,14 @@ if ($cmd eq 'parse') { # parse a file
             push @link, $description if $description ne '';
             push @link, $fulluri;
             print join('|', @link) . "\n";
+        }
+    );
+} elsif( $cmd eq 'query' ) {
+    # TODO: support beaconstore
+    $beaconfile->parse(
+        'link' => sub { 
+            my ($id) = @_; # $label, $description, $to, $fullid, $fulluri
+            print getbeaconlink(@_) . "\n" if $id eq $query; 
         }
     );
 } # TODO: implement other commands: init, list, insert, update, delete
@@ -226,19 +241,21 @@ followed by all valid links.
 
 Print all valid links in fully expanded form, without meta fields.
 
+=item query
+
+Query a BEACON file ore stored BEACON for an id (without prefix).
+
 =back
 
 The following arguments and commands are planned, but not implemented yet:
 
   -config <file> specify config file, e.g. for database connection
 
- init                  initialize beacon store
- list                  list names of all stored beacons
- insert <name> <file>  insert a new beacon from file to a store
- update <name> <file>  replace a beacon from file to a store
- delete <name>         remove a beacon from a store
-
- query <name> <id>     query a beacon (stored of file) for an id
+  init                  initialize beacon store
+  list                  list names of all stored beacons
+  insert <name> <file>  insert a new beacon from file to a store
+  update <name> <file>  replace a beacon from file to a store
+  delete <name>         remove a beacon from a store
 
 =head1 EXAMPLES
 
@@ -246,7 +263,7 @@ Show the meta fields of a BEACON file (command C<about>):
 
   beacon about myfile
 
-Alernatively you can say one of:
+Alternatively you can say one of:
 
   beacon -file myfile
   beacon -file myfile about
@@ -256,7 +273,11 @@ Validate a BEACON file and show errors only:
 
   beacon parse myfile > /dev/null
 
-  beacon -pre myfields -mtime files ....TODO
+Prepend meta fields from file C<mfields> to BEACON file C<myfile>.
+Use last modification time of C<myfile> as TIMESTAMP if not included
+in C<myfile>:
+
+  beacon -pre myfields -mtime dump myfile
 
 =head1 NOTE
 

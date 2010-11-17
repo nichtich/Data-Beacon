@@ -168,6 +168,7 @@ sub meta {
                     # Note that this conversion does not trigger an error
                     # or warning, but may be dropped in a future version
                 } else {
+                    # ISO 8601 combined date and time in UTC
                     $value =~ s/Z$//;
                     croak $key . ' meta value must be of form YYYY-MM-DDTHH:MM:SSZ'
                         unless $value = Time::Piece->strptime( 
@@ -454,7 +455,8 @@ sub parsebeaconlink {
 
 Serialize a link and return it as condensed string. You must provide four
 parameters as string, which all can be the empty string. 'C<|>' characters
-are silently removed. If the C<$to> is not empty but not an URI, or on other errors, the empty string is returned. The C<$id> parameter is not checked
+are silently removed. If the C<$to> is not empty but not an URI, or on other
+errors, the empty string is returned. The C<$id> parameter is not checked
 whether it is an URI because it may be abbreviated (without PREFIX).
 
 =cut
