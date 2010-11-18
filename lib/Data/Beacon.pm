@@ -39,7 +39,6 @@ our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
   $beacon->parse( sub { return $nextline } );
 
   $beacon->count();      # number of parsed links
-  $beacon->lines();      # number of lines
   $beacon->errorcount(); # number of parsing errors
 
 =head1 DESCRIPTION
@@ -222,7 +221,7 @@ sub count {
 
 =head2 line
 
-Returns the current line number.
+Returns the current line number or zero.
 
 =cut
 
@@ -256,7 +255,7 @@ sub errorcount {
 
 Return all meta fields, serialized and sorted as string. Althugh the order of
 fields is irrelevant, but this implementation always returns the same fields
-in same order. To get all meta fields as hash, use the 'meta' method.
+in same order. To get all meta fields as hash, use the C<meta> method.
 
 =cut
 

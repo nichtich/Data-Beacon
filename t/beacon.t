@@ -315,6 +315,7 @@ ok( $b->lasterror =~ /^link handler died: bad/, 'dead link handler' );
 $b = beacon( 't/beacon1.txt', 'pre' => { 'BAR' => 'doz', 'prefix' => 'y:' } );
 is( $b->meta('bar'), 'doz', 'pre meta fields' );
 is( $b->meta('prefix'), 'x:' );
+# is( $b->line, 0 ); # 6
 
 $b->parse( \"#PREFIX: z:" );
 is( $b->meta('bar'), 'doz' );
