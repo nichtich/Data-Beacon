@@ -166,12 +166,9 @@ if ( $cmd eq 'parse' ) { # parse a file
     );
 } elsif( $cmd eq 'query' ) {
     # TODO: support beaconstore
-    $beaconfile->parse(
-        'link' => sub { 
-            my ($id) = @_; # $label, $description, $to, $fullid, $fulluri
-            print getbeaconlink(@_) . "\n" if $id eq $query; 
-        }
-    );
+    while ( my $link = $beaconfile->nextlink() ) {
+        print getbeaconlink(@$link)."\n" if $link->[0] eq $query;
+    }
 } # TODO: implement other commands: init, list, insert, update, delete
 
 

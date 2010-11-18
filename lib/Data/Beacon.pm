@@ -56,11 +56,17 @@ You can parse BEACON format either as iterator:
       my ($id, $label, $description, $to, $fullid, $fulluri) = @$link;
   }
 
-by push parsing with handler callbacks:
+  # alternatively
+  while ( $beacon->nextlink() ) {
+      my ($id, $label, $description, $to, $fullid, $fulluri) = @{$beacon->lastlink};
+  }
+
+Or by push parsing with handler callbacks:
 
   my $beacon = beacon( $file );
   $beacon->parse( 'link' => \link_handler );
   $errors = $beacon->errorcount;
+
 
 Instead of a filename, you can also provide a scalar reference, to parse
 from a string. The meta fields are parsed immediately:
@@ -385,7 +391,7 @@ sub nextlink {
         $self->{lookaheadline} = undef;
     } else {
         $line = $self->_readline();
-        return unless defined $line; # undef => EOF
+        return undef unless defined $line; # undef => EOF
     }
 
     do {
@@ -397,6 +403,16 @@ sub nextlink {
     return undef; # undef => EOF
 }
 
+=head2 lastlink
+
+Returns the last valid link that has been read.
+
+=cut
+
+sub lastlink {
+    my $self = shift;
+    return $self->{lastlink};
+}
 
 =head1 FUNCTIONS
 
@@ -544,6 +560,7 @@ sub _startparsing {
     $self->{meta} = { 'FORMAT' => 'BEACON' };
     $self->meta( %{ $self->{pre} } ) if $self->{pre};
     $self->{line} = 0;
+    $self->{lastlink} = undef;
     $self->{errorcount} = 0;
     $self->{lasterror} = [];
     $self->{lookaheadline} = undef;
@@ -685,7 +702,7 @@ sub _parseline {
     }
 
     # Finally we got a valid link
-
+    $self->{lastlink} = $link;
     $self->{meta}->{COUNT}++;
 
     if ( defined $self->{expected_examples} ) { # examples may contain prefix

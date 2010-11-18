@@ -157,6 +157,7 @@ is( $b->errorcount, 1, 'cannot parse a hashref' );
 $b->parse( \"x:from|x:to\n\n|comment" );
 is( $b->count, 1, 'parse from string' );
 is( $b->line, 3, '' );
+is_deeply( $b->lastlink, ['x:from','','','x:to','x:from','x:to'] );
 
 my @l;
 $b->parse( \"\xEF\xBB\xBFx:from|x:to", 'link' => sub { @l = @_; } );
@@ -204,10 +205,12 @@ is_deeply( [ $b->lasterror ], [ 'id must be URI: xxx',1,'xxx |foo' ],
 $b = beacon( \"\nid:1|t:1\n|comment\n" );
 is_deeply( $b->nextlink, ["id:1","","","t:1",'id:1','t:1'] );
 is_deeply( $b->nextlink, undef );
+is_deeply( $b->lastlink, ["id:1","","","t:1",'id:1','t:1'] );
 
 $b = beacon( \"id:1|t:1\na b|\nid:2|t:2" );
 is_deeply( $b->nextlink, ["id:1","","","t:1",'id:1','t:1'] );
 is_deeply( $b->nextlink, ["id:2","","","t:2",'id:2','t:2'] );
+is_deeply( $b->lastlink, ["id:2","","","t:2",'id:2','t:2'] );
 is( $b->nextlink, undef );
 is( $b->errorcount, 1 );
 is_deeply( [ $b->lasterror ], [ 'id must be URI: a b',2,'a b|' ] );
@@ -291,9 +294,6 @@ is_deeply( $b->nextlink, ['x:y','','','','x:y','http://foo.org/x:y'] );
 
 $b = beacon( \"#PREFIX: u:\n#TARGET: z:{ID}\n\$1" );
 is_deeply( $b->nextlink, ['$1','','','','u:$1','z:$1'] );
-
-use Data::Dumper;
-print Dumper( $b->nextlink() );
 
 $b = beacon( \"a:b|c:d" );
 is_deeply( $b->nextlink, ['a:b','','','c:d','a:b','c:d'] );
