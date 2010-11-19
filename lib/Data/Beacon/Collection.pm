@@ -1,11 +1,11 @@
-package Data::BeaconStore;
+package Data::Beacon::Collection;
 
 use strict;
 use warnings;
 
 =head1 NAME
 
-Data::BeaconStore - Abstract store of named sets of links in BEACON format
+Data::Beacon::Collection - Abstract collection of named BEACON link sets.
 
 =cut
 
@@ -18,11 +18,11 @@ our $VERSION = '0.0.1';
 
 Actually this class represents a hash that stores Beacon objects.
 
-It is not implemented yet.
+The current implementation is only a dummy. 
 
-I am not sure yet, whether we need this class or better directly
-implement classes like C<Data::Beacon::DBIStore>, 
-C<Data::Beacon::Filetore> etc.
+See L<Data::Beacon::Collection::DBI> 
+and L<Data::Beacon::Collection::Files>
+for implementation drafts.
 
 =head1 METHODS
 

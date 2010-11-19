@@ -10,7 +10,8 @@ Data::Beacon::DBI - Stores a BEACON in a database
 =cut
 
 use base 'Data::Beacon';
-use Carp;
+use Carp qw(croak);
+use DBI;
 
 our $VERSION = '0.0.1';
 
@@ -30,7 +31,7 @@ sub new {
     my $class = shift;
     my $self = bless { }, $class;
 
-    # ...
+    $self->_init( @_ );
 
     return $self;
 }
@@ -70,15 +71,10 @@ sub line {
 
 =head2 lasterror
 
-Returns the last error message (if any).
+Returns the last error message (if any). This method 
+is derived L<from Data::Beacon|Data::Beacon/lasterror>.
 
 =cut
-
-sub lasterror {
-    my $self = shift;
-
-    # ...
-}
 
 =head2 errorcount
 
@@ -94,8 +90,8 @@ sub errorcount {
 
 =head2 metafields 
 
-Return all meta fields, serialized and sorted as string.
-Implemented L<in Data::Beacon|Data::Beacon/metafields>.
+Return all meta fields, serialized and sorted as string. This
+method is derived L<from Data::Beacon|Data::Beacon/metafields>.
 
 =cut
 
