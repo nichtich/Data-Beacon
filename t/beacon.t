@@ -66,8 +66,9 @@ $b->meta( 'EXAMPLES', '|' );
 is( $b->meta('EXAMPLES'), undef );
 $b->meta( 'EXAMPLES', '' );
 
+my $expected = { 'FORMAT' => 'BEACON', 'FOO' => 'bar', 'X' => 'YZ' };
 $b->meta('foo' => 'bar ', ' X ' => " Y\nZ");
-is_deeply( { $b->meta() }, { 'FORMAT' => 'BEACON', 'FOO' => 'bar', 'X' => 'YZ' } );
+is_deeply( { $b->meta() }, $expected );
 $b->meta('foo',''); # unset
 is_deeply( { $b->meta() }, { 'FORMAT' => 'BEACON', 'X' => 'YZ' } );
 
@@ -80,6 +81,9 @@ is( $b->count, 0, 'count()' );
 $b->meta('count' => 7);
 is( $b->count, 7, 'count()' );
 is( $b->line, 0, 'line()' );
+
+$b = beacon( $expected );
+is_deeply( { $b->meta() }, $expected );
 
 $b = beacon();
 $b->meta( 'feed' => 'http://example.com', 'target' => 'http://example.com/{ID}' );

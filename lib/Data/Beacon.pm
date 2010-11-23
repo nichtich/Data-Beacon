@@ -9,8 +9,8 @@ Data::Beacon - BEACON format validating parser and serializer
 
 =cut
 
-use Data::Validate::URI qw(is_uri);
 use Time::Piece;
+use Scalar::Util qw(blessed);
 use Carp;
 
 our $VERSION = '0.2.2';
@@ -24,6 +24,8 @@ our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
 
   $beacon = new SeeAlso::Beacon( $beaconfile );
   $beacon = beacon( $beaconfile ); # equivalent
+
+  $beacon = beacon( { FOO => "bar" } ); # empty BEACON with meta fields
 
   $beacon->meta();                                   # get all meta fields
   $beacon->meta( 'DESCRIPTION' => 'my best links' ); # set meta fields
@@ -45,6 +47,22 @@ our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
 
 This package implements a parser and serializer for BEACON format with
 dedicated error handling.
+
+=head2 SERIALIZING
+
+To only serialize BEACON meta fields, create a new Beacon object and call
+the C<metafields> method:
+
+  my $beacon = beacon( $hashref_of_metafields );
+  print $beacon->metafields;
+
+To serialize links in BEACON format, you can use the C<getbeaconlink> 
+function that is exported by this package. To parse a BEACON file and
+print all valid links:
+
+  beacon( $filename )->parse(
+      'link' => sub { print getbeaconlink(@_) . "\n"; }
+  );
 
 =head2 PARSING
 
@@ -79,25 +97,9 @@ To quickly parse a BEACON file:
   use Data::Beacon;
   beacon($file)->parse();
 
-=head2 SERIALIZING
-
-To only serialize BEACON meta fields, create a new Beacon object and call
-the C<metafields> method:
-
-  my $beacon = beacon( %my_meta_fields );
-  print $beacon->metafields;
-
-To serialize links in BEACON format, you can use the C<getbeaconlink> 
-function that is exported by this package. To parse a BEACON file and
-print all valid links:
-
-  beacon( $filename )->parse(
-      'link' => sub { print getbeaconlink(@_) . "\n"; }
-  );
-
 =head1 METHODS
 
-=head2 new ( [ $from ] { handler => coderef } )
+=head2 new ( [ $from ] { handler => coderef } | $metafields )
 
 Create a new Beacon object, optionally from a given file. If you specify a 
 source via C<$from> argument or as parameter C<from =E<gt> $from>, it will
@@ -159,14 +161,14 @@ sub meta {
               my $uri = $value; 
               $uri =~ s/{ID}|{LABEL}//g;
               croak 'Invalid #TARGET field: must be an URI pattern'
-                  unless is_uri($uri);
+                  unless _is_uri($uri);
             } elsif ($key eq 'FEED') {
                 croak 'FEED meta value must be a HTTP/HTTPS URL' 
                     unless $value =~ 
   /^http(s)?:\/\/[a-z0-9-]+(.[a-z0-9-]+)*(:[0-9]+)?(\/[^#|]*)?(\?[^#|]*)?$/i;
             } elsif ($key eq 'PREFIX') {
                 croak 'PREFIX meta value must be a URI' 
-                    unless is_uri($value);
+                    unless _is_uri($value);
             } elsif ( $key =~ /^(REVISIT|TIMESTAMP)$/) {
                 if ($value =~ /^[0-9]+$/) { # seconds since epoch
                     $value = gmtime($value)->datetime() . 'Z'; 
@@ -456,7 +458,7 @@ sub parsebeaconlink {
         $link->[3] = shift @parts if @parts;
     } else {
         $link->[3] = pop @parts
-            if ($n > 1 && is_uri($parts[$n-2]));
+            if ($n > 1 && _is_uri($parts[$n-2]));
         $link->[1] = shift @parts if @parts;
         $link->[2] = shift @parts if @parts;
     }
@@ -488,7 +490,7 @@ sub getbeaconlink {
             pop @link;
             pop @link if ($link[1] eq '');
         }
-    } elsif ( is_uri($link[3]) ) {
+    } elsif ( _is_uri($link[3]) ) { # only position of _is_uri where argument may be undefined
         my $uri = pop @link;
         if ($link[2] eq '') {
            pop @link;
@@ -506,7 +508,7 @@ sub getbeaconlink {
 
 If you directly call any of this methods, puppies will die.
 
-=head2 _initparams ( [ $from ] { handler => coderef | option => value } )
+=head2 _initparams ( [ $from ] { handler => coderef | option => value } | $metafield )
 
 Initialize parameters as passed to C<new> or C<parse>. Known parameters
 are C<from>, C<error>, and C<link> (C<from> is not checked here). In 
@@ -516,12 +518,17 @@ addition you cann pass C<pre> and C<mtime> as options.
 
 sub _initparams {
     my $self = shift;
+    my %param;
 
-    $self->{from} = (@_ % 2) ? shift(@_) : undef;
+    if ( @_ == 1 && !blessed($_[0]) && ref($_[0]) && ref($_[0]) eq 'HASH' ) {
+        %param = ( pre => $_[0], from => undef );
+    } else {
+        $self->{from} = (@_ % 2) ? shift(@_) : undef;
+        %param = @_;
+    }
 
-    my %param = @_;
     $self->{from} = $param{from}
-        if defined $param{from};
+        if exists $param{from};
 
     foreach my $name (qw(error link)) {
         next unless defined $param{$name};
@@ -678,7 +685,7 @@ sub _parseline {
     my $prefix = $self->{meta}->{PREFIX};
     $fullid = $prefix . $fullid if defined $prefix;
 
-    if ( !is_uri($fullid) ) {
+    if ( !_is_uri($fullid) ) {
         $link = "id must be URI: $fullid";
         $self->_handle_error( $link, $self->{line}, $line );
         return $link;
@@ -692,9 +699,9 @@ sub _parseline {
         $fulluri =~ s/{ID}/$id/g;
         $fulluri =~ s/{LABEL}/$label/g;
     } else {
-        $fulluri = $link->[3];
+        $fulluri = $link->[3]; 
     }
-    if ( !is_uri($fulluri) ) {
+    if ( !_is_uri($fulluri) ) {
         $link = "URI invalid: $fulluri";
         $self->_handle_error( $link, $self->{line}, $line );
         return $link;
@@ -727,6 +734,46 @@ sub _parseline {
     }
 
     return $link;
+}
+
+=head2 _is_uri
+
+Check whether a given string is an URI. This function is based on code of
+L<Data::Validate::URI>, adopted for performance.
+
+=cut
+
+sub _is_uri{
+    my $value = $_[0];
+    
+    return unless defined($value);
+    
+    # check for illegal characters
+    return if $value =~ /[^a-z0-9\:\/\?\#\[\]\@\!\$\&\'\(\)\*\+\,\;\=\.\-\_\~\%]/i;
+    
+    # check for hex escapes that aren't complete
+    return if $value =~ /%[^0-9a-f]/i;
+    return if $value =~ /%[0-9a-f](:?[^0-9a-f]|$)/i;
+    
+    # split uri (from RFC 3986)
+    my($scheme, $authority, $path, $query, $fragment)
+      = $value =~ m|(?:([^:/?#]+):)?(?://([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?|;
+
+    # scheme and path are required, though the path can be empty
+    return unless (defined($scheme) && length($scheme) && defined($path));
+    
+    # if authority is present, the path must be empty or begin with a /
+    if(defined($authority) && length($authority)){
+        return unless(length($path) == 0 || $path =~ m!^/!);    
+    } else {
+        # if authority is not present, the path must not start with //
+        return if $path =~ m!^//!;
+    }
+    
+    # scheme must begin with a letter, then consist of letters, digits, +, ., or -
+    return unless lc($scheme) =~ m!^[a-z][a-z0-9\+\-\.]*$!;
+    
+    return 1;
 }
 
 1;
