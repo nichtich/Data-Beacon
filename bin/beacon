@@ -18,7 +18,7 @@ use Data::Beacon::Collection::DBI;
 my ($configfile, $file, $name, $testmode, $linksmode, $premeta, $mtime, $dbi,
     $help, $man, $quiet, $verbose, $query, $user, $password);
 my %commands = map { $_ => 1 }
-    qw(dump expand about parse list init insert update upsert delete query);
+    qw(dump expand about parse list init insert update upsert delete query queryexpand);
 
 GetOptions(
     "config:s" => \$configfile,
@@ -143,9 +143,9 @@ if ($cmd eq 'list' or $cmd eq 'init') {
 } elsif($cmd eq 'parse') {
     requirefile();
 } else {
-    if ($cmd =~ /^(expand|dump|about|query)$/) {
+    if ($cmd =~ /^((query)?expand|dump|about|query)$/) {
         $collection ? requirename() : requirefile();
-        if ( $cmd eq 'query' ) {
+        if ( $cmd =~ /^query(expand)?$/ ) {
             $query = shift @ARGV;
             failed("Please specifiy an id to query for!") unless defined $query;
         };
@@ -171,7 +171,7 @@ if ($testmode) {
 
 my $beacon = $beaconfile;
 if ( $collection ) {
-    if ( $cmd =~ /^(about|dump|expand|query|delete|update)$/ ) {
+    if ( $cmd =~ /^(about|dump|(query)?expand|query|delete|update)$/ ) {
         $beacon = $collection->get( $name );
         if (!$beacon) {
             my $msg = $collection->lasterror;
@@ -179,6 +179,16 @@ if ( $collection ) {
             failed($msg); 
         }
     }
+}
+
+# TODO: put this into the package and test it
+sub tmp_expand {
+    my ($id, $label, $description, $to, $fullid, $fulluri) = @_;
+    my @link = $fullid;
+    push @link, $label if $label ne '' or $description ne '';
+    push @link, $description if $description ne '';
+    push @link, $fulluri;
+    return @link;
 }
 
 # Now finally do something
@@ -199,21 +209,22 @@ if ( $cmd eq 'parse' ) { # parse a file
     # TODO: we may warn on errors, wrong count etc.
 } elsif( $cmd eq 'expand' ) { # dump a full, parsed beacon file
     $beacon->parse(
-        'link' => sub {  # TODO: put this into the package and test it
-            my ($id, $label, $description, $to, $fullid, $fulluri) = @_;
-            my @link = $fullid;
-            push @link, $label if $label ne '' or $description ne '';
-            push @link, $description if $description ne '';
-            push @link, $fulluri;
-            print join('|', @link) . "\n";
+        'link' => sub {  
+            print join('|', tmp_expand(@_)) . "\n";
         }
     );
-} elsif( $cmd eq 'query' ) {
+} elsif( $cmd =~ /^query(expand)?$/ ) {
+    my $expand = $1;
     if ( $beacon->can('query') ) {
-        my $links = $beacon->query( $query );
+        my $links = $beacon->query( $query ); # TODO use link handler
         if ($links) {
             foreach my $l (@$links) {
-                print getbeaconlink(@$l)."\n";
+                if ( $expand ) { # TODO move to the library
+                    my @el = tmp_expand(@$l);
+                    print join('|', tmp_expand(@$l)) . "\n";
+                } else {
+                    print getbeaconlink(@$l)."\n";
+                }
             }
         }
     } else {

@@ -10,10 +10,11 @@ Data::Beacon::DBI - Stores a BEACON in a database
 =cut
 
 use base 'Data::Beacon';
+use URI::Escape;
 use Carp qw(croak);
 use DBI;
 
-our $VERSION = '0.0.1';
+our $VERSION = '0.0.2';
 
 =head1 DESCRIPTION
 
@@ -204,7 +205,7 @@ sub query {
     my ($self, $id) = @_;
 
     my $sql = <<"SQL";
-SELECT link_label, link_descr, link_to FROM links 
+SELECT link_id, link_label, link_descr, link_to FROM links 
 WHERE beacon_name = ? AND link_id = ?
 SQL
     my $dbh = $self->{collection}->{dbh};
@@ -217,7 +218,7 @@ SQL
     }
 
     my $links = [ map { 
-        [ $id, $self->_expanded_link( $_ ) ]
+        [ $self->_expanded_link( $_ ) ]
     } @$result ];
 
     return $links;
@@ -270,10 +271,12 @@ sub _expanded_link {
         $fulluri = $target;
         my ($id,$label) = ($link->[0], $link->[1]);
         $fulluri =~ s/{ID}/$id/g;
-        $fulluri =~ s/{LABEL}/$label/g;
+        $fulluri =~ s/{LABEL}/uri_escape($label)/eg;
     } else {
         $fulluri = $link->[3]; 
     }
+
+    # TODO: expand label / description via MESSAGE
 
     # $link may be readonly
     #push @$link, $fullid;

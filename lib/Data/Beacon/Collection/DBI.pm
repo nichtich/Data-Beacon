@@ -206,12 +206,14 @@ sub _handle_error {
 
 sub _init {
     my $self = shift;
-    my $dsn = shift;;
+    my $dsn = shift; # TODO: dsn as param
     my (%param) = @_;
     
     $self->{lasterror} = [];
     $self->{errorcount} = 0;
     $self->{error_handler} = undef;
+
+    $dsn = "dbi:$dsn" unless $dsn =~ /^dbi:/;
 
     if ($param{error}) {
         croak "error handler must be code"

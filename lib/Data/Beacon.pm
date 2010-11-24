@@ -11,6 +11,7 @@ Data::Beacon - BEACON format validating parser and serializer
 
 use Time::Piece;
 use Scalar::Util qw(blessed);
+use URI::Escape;
 use Carp;
 
 our $VERSION = '0.2.3';
@@ -697,12 +698,13 @@ sub _parseline {
         $fulluri = $target;
         my ($id,$label) = ($link->[0], $link->[1]);
         $fulluri =~ s/{ID}/$id/g;
-        $fulluri =~ s/{LABEL}/$label/g;
+        $fulluri =~ s/{LABEL}/uri_escape($label)/eg;
     } else {
         $fulluri = $link->[3]; 
     }
     if ( !_is_uri($fulluri) ) {
         $link = "URI invalid: $fulluri";
+        # TODO: we could encode bad characters etc.
         $self->_handle_error( $link, $self->{line}, $line );
         return $link;
     }

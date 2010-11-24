@@ -13,6 +13,7 @@ use ExtUtils::MakeMaker;
         'Getopt::Long' => '0',
         'Pod::Usage' => '0',
         'Data::Validate::URI' => 0,
+        'URI::Escape' => '1.0',
         'Scalar::Util' => 0,   # core
         'Time::Piece' => 1.08, # 2002, not core
     },

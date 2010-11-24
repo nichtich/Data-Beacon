@@ -307,7 +307,7 @@ is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:a:b'],
     'TARGET changes parsing' );
 
 $b = beacon( \"#TARGET: f:{LABEL}\na:b|c:d" );
-is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:c:d'],
+is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:c%3Ad'],
     'TARGET changes parsing' );
 
 # croaking link handler
