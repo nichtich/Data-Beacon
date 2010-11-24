@@ -66,7 +66,7 @@ sub insert {
 
 =head2 remove ( $name )
 
-Remove a named Beacon
+Remove a named Beacon.
 
 =cut
 

@@ -14,6 +14,7 @@ use ExtUtils::MakeMaker;
         'Pod::Usage' => '0',
         'Data::Validate::URI' => 0,
         'Time::Piece' => 0,
+        'Scalar::Util' => 0,
     },
     dist            => {
         COMPRESS => 'gzip -9f',

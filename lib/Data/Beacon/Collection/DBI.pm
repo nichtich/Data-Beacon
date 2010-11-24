@@ -10,7 +10,9 @@ Data::Beacon::Collection::DBI - Collection of BEACONs in a database
 =cut
 
 use base 'Data::Beacon::Collection';
+use Data::Beacon::DBI;
 use Carp qw(croak);
+use Scalar::Util qw(reftype);
 use DBI;
 
 our $VERSION = '0.0.1';
@@ -47,6 +49,121 @@ sub connected {
     return $self->{dbh};
 }
 
+=head2 get ( $name )
+
+Get a named Beacon as L<Data::Beacon::DBI> object or undef.
+
+=cut
+
+sub get {
+    my ($self, $name) = @_;
+    return unless $self->connected;
+
+    my $beacon = Data::Beacon::DBI->new( $self, $name );
+
+    return $beacon;
+}
+
+=head2 insert ( $name, $beacon )
+
+Insert a named Beacon. This method works as 'upsert',
+that means you can replace or add a Beacon.
+
+Returns the inserted Beacon as L<Data::Beacon::DBI>.
+
+=cut
+
+sub insert {
+    my ($self, $name, $beacon) = @_;
+    return unless $self->connected;
+
+    my %meta = $beacon->meta();
+    my $format = $meta{BEACON};
+    delete $meta{BEACON};
+
+    # my ($id) = $self->{dbh}->selectrow_array('SELECT MAX(beacon_id) FROM beacons');
+    # $id ||= 1;
+
+    $self->remove( $name ); # TODO: include this in the transaction
+
+    my $sql=<<"SQL";
+INSERT INTO beacons ( beacon_name, beacon_meta, beacon_value )
+VALUES ( ?, ?, ? );
+SQL
+    my $sth = $self->{dbh}->prepare($sql);
+
+    foreach my $key ( keys %meta ) {
+        my $rv = $sth->execute( $name, $key, $meta{$key} );
+    }
+
+    $sql = <<"SQL";
+INSERT INTO links ( beacon_name, link_id, link_label, link_descr, link_to )
+VALUES ( ?, ?, ?, ?, ? )
+SQL
+    $sth = $self->{dbh}->prepare( $sql );
+    if (!$sth) {
+        $self->_handle_error( $self->{dbh}->errstr );
+        return;
+    }
+
+    $sth->execute_for_fetch( sub { 
+        my $link = $beacon->nextlink();
+        return unless $link;
+        $link = [ $name, $link->[0], $link->[1], $link->[2], $link->[3] ];
+        return $link;
+    } );
+    $sth->finish;
+
+    $self->{dbh}->commit; # TODO: catch errors
+
+    return $self->get( $name );
+}
+
+=head2 remove ( $name )
+
+Remove a named Beacon. Returns true if an existing Beacon has been removed.
+
+=cut
+
+sub remove {
+    my ($self, $name) = @_;
+    return unless $self->connected;
+
+
+    my $rows = $self->{dbh}->do('DELETE FROM beacons WHERE beacon_name = ?', {}, $name);
+    $rows = 1*$rows if defined $rows; # 1*"0E0" = 0
+    if ($rows) {
+        $self->{dbh}->do('DELETE FROM links WHERE beacon_name = ?', {}, $name);
+        $self->{dbh}->commit(); # TODO what if the previous do failed?
+        return $rows;
+    }
+
+    $self->_handle_error( $DBI::errstr ) if $DBI::errstr;
+    return 0;
+}
+
+=head2 list ( [ %meta ] )
+
+List the names of all namad Beacons. Optionally you can ask
+for specific meta fields that must match (not implemented yet).
+
+=cut
+
+sub list {
+    my ($self, %meta) = @_;
+
+    # TODO: query for specific beacons with meta fields
+    my $sql = 'SELECT DISTINCT beacon_name FROM beacons';
+    my $list = $self->{dbh}->selectall_arrayref($sql);
+
+    if ( !$list ) {
+        $self->_handle_error( $self->{dbh}->errstr );
+        return;
+    }
+
+    return map { $_->[0] } @$list;
+}
+
 =head1 INTERNAL METHODS
 
 =cut
@@ -59,6 +176,16 @@ Returns the last parsing error message (if any).
 
 sub lasterror {
     return $_[0]->{lasterror}->[0];
+}
+
+=head2 errorcount
+
+Returns the number of errors or zero.
+
+=cut
+
+sub errorcount {
+    return $_[0]->{errorcount};
 }
 
 =head2 _handle_error ( $msg )
@@ -78,43 +205,63 @@ sub _handle_error {
 
 sub _init {
     my $self = shift;
-    my ($dsn) = @_;
+    my $dsn = shift;;
+    my (%param) = @_;
     
     $self->{lasterror} = [];
     $self->{errorcount} = 0;
+    $self->{error_handler} = undef;
 
+    if ($param{error}) {
+        croak "error handler must be code"
+            unless reftype( $param{error} ) eq 'CODE';
+        $self->{'error_handler'} = $param{error};
+    }
     my ($user, $password) = ("","");
     return unless $dsn;
 
-    $self->{dbh} = DBI->connect($dsn, $user, $password, {PrintError => 0});
+    $self->{dbh} = eval {
+        DBI->connect( $dsn, $user, $password, { PrintError => 0, AutoCommit => 0 } );
+    };
     if ( !$self->{dbh} ) {
-        $self->_handle_error( $DBI::errstr );
+        my $msg = $DBI::errstr;
+        $msg ||= "failed to connect to database";
+        $self->_handle_error( $msg );
         return;
     }
 
-    # TODO: do not create tables by default and use transaction
-
+    # each line holds one meta field
     my $create = <<SQLITE;
 CREATE TABLE IF NOT EXISTS beacons (
-  id, name, meta, value, UNIQUE(id), UNIQUE(name), 
-  UNIQUE(name,meta) ON CONFLICT REPLACE
+  beacon_name, 
+  beacon_meta, 
+  beacon_value,
+  UNIQUE(beacon_name,beacon_meta) ON CONFLICT REPLACE
 )
 SQLITE
 
     $self->{dbh}->do($create)
       or $self->_handle_error( $self->{dbh}->errstr, "", "" );
 
+    return if ( $self->{errorcount} );    
+
+    # each line holds one link
     $create = <<SQLITE;
 CREATE TABLE IF NOT EXISTS links (
-  beacon_id, link_id, label, description, link_to
+  beacon_name, 
+  link_id, 
+  link_label, 
+  link_descr, 
+  link_to
 )
 SQLITE
 
+    if (!$self->lasterror) {
     $self->{dbh}->do($create)
       or $self->_handle_error( $self->{dbh}->errstr, "", "" );
+    }
 
-    # $dbh->commit
-
+    $self->{dbh}->commit;
 }
 
 1;
