@@ -65,10 +65,10 @@ sub meta {
     $meta->{COUNT} = $self->count;
 
     # TODO: get specific meta field or set meta field(s)
-
     # never change the name!
     # changing PREFIX or TARGET may harm integrity of the Beacon!
 
+    $self->{meta} = $meta;
     return %{$meta};
 }
 
@@ -168,7 +168,7 @@ sub parse {
 
 =head2 nextlink
 
-Return the next link when iterating, or undef.
+Return the next link when iterating (as array reference), or undef.
 
 =cut
 
@@ -184,27 +184,7 @@ sub nextlink {
         return;
     }
 
-    # TODO: the following code is duplicated in Data::Beacon::_parseline
-    my $fullid = $link->[0];
-    my $prefix = $self->{meta}->{PREFIX};
-    $fullid = $prefix . $fullid if defined $prefix;
-
-    my $fulluri;
-    my $target = $self->{meta}->{TARGET};
-    if (defined $target) {
-        $fulluri = $target;
-        my ($id,$label) = ($link->[0], $link->[1]);
-        $fulluri =~ s/{ID}/$id/g;
-        $fulluri =~ s/{LABEL}/$label/g;
-    } else {
-        $fulluri = $link->[3]; 
-    }
-
-    # $link is readonly
-    #push @$link, $fullid;
-    #push @$link, $fulluri;
-
-    return [ @$link, $fullid, $fulluri ];
+    return [ $self->_expanded_link( $link ) ];
 }
 
 =head2 lastlink
@@ -221,9 +201,26 @@ TODO
 =cut
 
 sub query {
-    my $self = shift;
+    my ($self, $id) = @_;
 
-    # ...
+    my $sql = <<"SQL";
+SELECT link_label, link_descr, link_to FROM links 
+WHERE beacon_name = ? AND link_id = ?
+SQL
+    my $dbh = $self->{collection}->{dbh};
+
+    my $result = $dbh->selectall_arrayref($sql,{},$self->{name}, $id);
+
+    if ( !$result ) {
+        $self->_handle_error( $dbh->errstr );
+        return;
+    }
+
+    my $links = [ map { 
+        [ $id, $self->_expanded_link( $_ ) ]
+    } @$result ];
+
+    return $links;
 }
 
 =head1 INTERNAL METHODS
@@ -246,6 +243,43 @@ sub _init {
     $self->{name} = $name;
     $self->{collection} = $collection;
 
+}
+
+
+=head2 _expanded_link
+
+Expand an link with PREFIX and TARGET, if given. Does not call C<meta>
+but uses the cached meta values. 
+Returns an array instead of an array reference!
+
+TODO: Should be moved to L<Data::Beacon>.
+
+=cut
+
+sub _expanded_link {
+    my $self = shift;
+    my $link = shift;
+
+    my $fullid = $link->[0];
+    my $prefix = $self->{meta}->{PREFIX};
+    $fullid = $prefix . $fullid if defined $prefix;
+
+    my $fulluri;
+    my $target = $self->{meta}->{TARGET};
+    if (defined $target) {
+        $fulluri = $target;
+        my ($id,$label) = ($link->[0], $link->[1]);
+        $fulluri =~ s/{ID}/$id/g;
+        $fulluri =~ s/{LABEL}/$label/g;
+    } else {
+        $fulluri = $link->[3]; 
+    }
+
+    # $link may be readonly
+    #push @$link, $fullid;
+    #push @$link, $fulluri;
+
+    return ( @$link, $fullid, $fulluri );
 }
 
 1;

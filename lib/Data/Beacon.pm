@@ -13,7 +13,7 @@ use Time::Piece;
 use Scalar::Util qw(blessed);
 use Carp;
 
-our $VERSION = '0.2.2';
+our $VERSION = '0.2.3';
 
 use base 'Exporter';
 our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);

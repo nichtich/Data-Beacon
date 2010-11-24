@@ -1,5 +1,8 @@
 Revision history for Perl package Data::Beacon
 
+0.2.3 2010-11-24
+    * added simple Beacon collections with DBI
+
 0.2.1 2010-11-02
      * minor fixes and extensions
 

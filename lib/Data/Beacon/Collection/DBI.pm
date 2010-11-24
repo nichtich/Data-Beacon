@@ -86,6 +86,7 @@ sub insert {
 
     $self->remove( $name ); # TODO: include this in the transaction
 
+    # MySQL would need 'ON DUPLICATE KEY UPDATE' unless we remove the Beacon
     my $sql=<<"SQL";
 INSERT INTO beacons ( beacon_name, beacon_meta, beacon_value )
 VALUES ( ?, ?, ? );
@@ -129,7 +130,6 @@ sub remove {
     my ($self, $name) = @_;
     return unless $self->connected;
 
-
     my $rows = $self->{dbh}->do('DELETE FROM beacons WHERE beacon_name = ?', {}, $name);
     $rows = 1*$rows if defined $rows; # 1*"0E0" = 0
     if ($rows) {
@@ -151,6 +151,7 @@ for specific meta fields that must match (not implemented yet).
 
 sub list {
     my ($self, %meta) = @_;
+    return () unless $self->connected;
 
     # TODO: query for specific beacons with meta fields
     my $sql = 'SELECT DISTINCT beacon_name FROM beacons';
@@ -217,11 +218,12 @@ sub _init {
             unless reftype( $param{error} ) eq 'CODE';
         $self->{'error_handler'} = $param{error};
     }
-    my ($user, $password) = ("","");
     return unless $dsn;
 
     $self->{dbh} = eval {
-        DBI->connect( $dsn, $user, $password, { PrintError => 0, AutoCommit => 0 } );
+        DBI->connect( $dsn, $param{user}, $param{password},
+            { RaiseError => 0, PrintError => 0, AutoCommit => 0 } 
+        );
     };
     if ( !$self->{dbh} ) {
         my $msg = $DBI::errstr;
@@ -230,23 +232,28 @@ sub _init {
         return;
     }
 
-    # each line holds one meta field
-    my $create = <<SQLITE;
+# TODO: support other databases (MySQL, Postgres, Berkeley DB etc.)
+    my $driver = lc($self->{dbh}->{Driver}->{Name});
+
+    $self->{dbh}->{RaiseError} = 1;
+
+
+    my @statements;
+
+    # beacons: each line holds one meta field
+    # links: each line holds one link
+
+    eval {
+        if ( $driver eq 'sqlite' ) {
+            push @statements, <<"SQL";
 CREATE TABLE IF NOT EXISTS beacons (
   beacon_name, 
   beacon_meta, 
   beacon_value,
   UNIQUE(beacon_name,beacon_meta) ON CONFLICT REPLACE
 )
-SQLITE
-
-    $self->{dbh}->do($create)
-      or $self->_handle_error( $self->{dbh}->errstr, "", "" );
-
-    return if ( $self->{errorcount} );    
-
-    # each line holds one link
-    $create = <<SQLITE;
+SQL
+            push @statements, <<"SQL";
 CREATE TABLE IF NOT EXISTS links (
   beacon_name, 
   link_id, 
@@ -254,14 +261,42 @@ CREATE TABLE IF NOT EXISTS links (
   link_descr, 
   link_to
 )
-SQLITE
+SQL
+        } elsif ( $driver eq 'mysql' ) {
+            push @statements, <<"SQL";
+CREATE TABLE IF NOT EXISTS beacons (
+  beacon_name VARCHAR(32) NOT NULL, 
+  beacon_meta VARCHAR(64) NOT NULL, 
+  beacon_value VARCHAR(128) NOT NULL,
+  UNIQUE(beacon_name,beacon_meta),
+  INDEX(beacon_name,beacon_meta)
+) ENGINE=InnoDB
+SQL
+            push @statements, <<"SQL";
+CREATE TABLE IF NOT EXISTS links (
+  beacon_name VARCHAR(32) NOT NULL,
+  link_id VARCHAR(64) NOT NULL,
+  link_label VARCHAR(128) NOT NULL,
+  link_descr VARCHAR(128) NOT NULL, 
+  link_to VARCHAR(128) NOT NULL,
+  INDEX (beacon_name),
+  INDEX (beacon_name,link_id)
+) ENGINE=InnoDB
+SQL
+        } else {
+            die ("Unknown DBI driver: '$driver'");
+        }
 
-    if (!$self->lasterror) {
-    $self->{dbh}->do($create)
-      or $self->_handle_error( $self->{dbh}->errstr, "", "" );
+        foreach my $sql (@statements) {
+            $self->{dbh}->do($sql) or die( $self->{dbh}->errstr );
+        }
+        $self->{dbh}->commit;
+    };
+    if ($@) {
+        $self->_handle_error( $@ );
     }
 
-    $self->{dbh}->commit;
+    $self->{dbh}->{RaiseError} = 0;
 }
 
 1;
