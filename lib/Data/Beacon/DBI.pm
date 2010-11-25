@@ -14,7 +14,7 @@ use URI::Escape;
 use Carp qw(croak);
 use DBI;
 
-our $VERSION = '0.0.2';
+our $VERSION = '0.1.0';
 
 =head1 DESCRIPTION
 
@@ -53,14 +53,15 @@ or string or undef (one argument), or croaks on invalid arguments.
 sub meta {
     my $self = shift;
 
+    my $dbh = $self->{collection}->{dbh};
     # get all meta fields
-    my $meta = $self->{collection}->{dbh}->selectall_hashref(
-        'SELECT beacon_meta,beacon_value FROM beacons WHERE beacon_name = ?',
-        'beacon_meta', {}, $self->{name}
+    my $meta = $dbh->selectall_hashref(
+        'SELECT bmeta, bvalue FROM beacons WHERE bname = ?',
+        'bmeta', {}, $self->{name}
     );
     return unless $meta and keys %$meta;
 
-    %{$meta} = map { $_ => $meta->{$_}->{beacon_value} } keys %$meta;
+    %{$meta} = map { $_ => $meta->{$_}->{bvalue} } keys %$meta;
     
     # always include COUNT
     $meta->{COUNT} = $self->count;
@@ -90,7 +91,7 @@ sub count {
     my $self = shift;
 
     my $count = $self->{collection}->{dbh}->selectall_arrayref(
-        'SELECT COUNT(*) FROM links WHERE beacon_name = ?',
+        'SELECT COUNT(*) FROM links WHERE bname = ?',
         {}, $self->{name}
     );
     return 0 unless $count;
@@ -148,7 +149,7 @@ sub parse {
 
     $self->{meta} = { $self->meta }; # TODO: we only need PREFIX, TARGET, MSG etc.
 
-    my $sql = 'SELECT link_id, link_label, link_descr, link_to FROM links WHERE beacon_name = ?';
+    my $sql = 'SELECT source, label, description, target FROM links WHERE bname = ?';
 
     eval {
         $self->{iterator} = $self->{collection}->{dbh}->prepare($sql, { RaiseError => 1 });
@@ -195,22 +196,22 @@ Implemented L<in Data::Beacon|Data::Beacon/lastlink>.
 
 =cut
 
-=head2 query ( $id )
+=head2 query ( $source )
 
 TODO
 
 =cut
 
 sub query {
-    my ($self, $id) = @_;
+    my ($self, $source) = @_;
 
     my $sql = <<"SQL";
-SELECT link_id, link_label, link_descr, link_to FROM links 
-WHERE beacon_name = ? AND link_id = ?
+SELECT source, label, description, target FROM links 
+WHERE bname = ? AND source = ?
 SQL
     my $dbh = $self->{collection}->{dbh};
 
-    my $result = $dbh->selectall_arrayref($sql,{},$self->{name}, $id);
+    my $result = $dbh->selectall_arrayref($sql,{},$self->{name}, $source);
 
     if ( !$result ) {
         $self->_handle_error( $dbh->errstr );
@@ -243,7 +244,6 @@ sub _init {
     $self->{lasterror} = [];
     $self->{name} = $name;
     $self->{collection} = $collection;
-
 }
 
 
@@ -261,28 +261,28 @@ sub _expanded_link {
     my $self = shift;
     my $link = shift;
 
-    my $fullid = $link->[0];
+    my $sourceuri = $link->[0];
     my $prefix = $self->{meta}->{PREFIX};
-    $fullid = $prefix . $fullid if defined $prefix;
+    $sourceuri = $prefix . $sourceuri if defined $prefix;
 
-    my $fulluri;
+    my $targeturi;
     my $target = $self->{meta}->{TARGET};
     if (defined $target) {
-        $fulluri = $target;
-        my ($id,$label) = ($link->[0], $link->[1]);
-        $fulluri =~ s/{ID}/$id/g;
-        $fulluri =~ s/{LABEL}/uri_escape($label)/eg;
+        $targeturi = $target;
+        my ($source,$label) = ($link->[0], $link->[1]);
+        $targeturi =~ s/{ID}/$source/g;
+        $targeturi =~ s/{LABEL}/uri_escape($label)/eg;
     } else {
-        $fulluri = $link->[3]; 
+        $targeturi = $link->[3]; 
     }
 
     # TODO: expand label / description via MESSAGE
 
     # $link may be readonly
-    #push @$link, $fullid;
-    #push @$link, $fulluri;
+    #push @$link, $sourceuri;
+    #push @$link, $targeturi;
 
-    return ( @$link, $fullid, $fulluri );
+    return ( @$link, $sourceuri, $targeturi );
 }
 
 1;
@@ -305,7 +305,7 @@ sub append {
     # ...
 }
 
-=head2 replace ( $id [ $links ] )
+=head2 replace ( $source [, $links ] )
 
 Insert, replace or remove links.
 

@@ -26,7 +26,7 @@ our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
   $beacon = new SeeAlso::Beacon( $beaconfile );
   $beacon = beacon( $beaconfile ); # equivalent
 
-  $beacon = beacon( { FOO => "bar" } ); # empty BEACON with meta fields
+  $beacon = beacon( { FOO => "bar" } ); # empty Beacon with meta fields
 
   $beacon->meta();                                   # get all meta fields
   $beacon->meta( 'DESCRIPTION' => 'my best links' ); # set meta fields
@@ -47,7 +47,18 @@ our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
 =head1 DESCRIPTION
 
 This package implements a parser and serializer for BEACON format with
-dedicated error handling.
+dedicated error handling. A B<Beacon>, as implemente by C<Data::Beacon>
+is I<a set of links> together with some I<meta fields> that describe it.
+Each link consists of four values I<source> (also refered to as I<id>),
+I<label>, I<description>, and I<target>, where source and target are
+mandatory URIs, and label and description are strings, being the empty 
+string by default.
+
+B<BEACON format> is the serialization format for Beacons. It defines a
+very condense syntax to express links without having to deal much with
+technical specifications.
+
+See L<http://meta.wikimedia.org/wiki/BEACON> for a more detailed  description.
 
 =head2 SERIALIZING
 
@@ -71,12 +82,12 @@ You can parse BEACON format either as iterator:
 
   my $beacon = beacon( $file );
   while ( my $link = $beacon->nextlink() ) {
-      my ($id, $label, $description, $to, $fullid, $fulluri) = @$link;
+      my ($source, $label, $description, $target, $sourceuri, $targeturi) = @$link;
   }
 
   # alternatively
   while ( $beacon->nextlink() ) {
-      my ($id, $label, $description, $to, $fullid, $fulluri) = @{$beacon->lastlink};
+      my ($source, $label, $description, $target, $sourceuri, $targeturi) = @{$beacon->lastlink};
   }
 
 Or by push parsing with handler callbacks:
@@ -97,6 +108,10 @@ To quickly parse a BEACON file:
 
   use Data::Beacon;
   beacon($file)->parse();
+
+=head2 QUERYING
+
+
 
 =head1 METHODS
 
@@ -310,30 +325,33 @@ link). The following arguments are passed to the handler:
 
 =over
 
-=item C<$id>
+=item C<$source>
 
 Link source as given in BEACON format.
+This may be abbreviated but not the empty string.
 
 =item C<$label>
 
+Label as string. This may be the empty string.
+
 =item C<$description>
 
-=item C<$to>
+Description as string. This may be the empty string.
 
-Links target as given in BEACON format.
+=item C<$target>
 
-=item C<$fullid>
+Link target as given in BEACON format.
+This may be abbreviated or the empty string.
 
-Expanded link source. This is always an URI.
+=item C<$sourceuri>
 
-=item C<$fulluri>
+Expanded link source as URI.
 
-Expanded link target. This is always an URI.
+=item C<$targeturi>
+
+Expanded link target as URI.
 
 =back
-
-Please note that C<$label>, C<$description>, and C<$to> may be the empty
-string, while C<$fullid> and C<$fulluri> are URIs.
 
 The number of sucessfully parsed links is returned by C<count>.
 
@@ -469,13 +487,13 @@ sub parsebeaconlink {
     return $link;
 }
 
-=head2 getbeaconlink ( $id, $label, $description, $to )
+=head2 getbeaconlink ( $source, $label, $description, $target )
 
 Serialize a link and return it as condensed string. You must provide four
 parameters as string, which all can be the empty string. 'C<|>' characters
-are silently removed. If the C<$to> is not empty but not an URI, or on other
-errors, the empty string is returned. The C<$id> parameter is not checked
-whether it is an URI because it may be abbreviated (without PREFIX).
+are silently removed. If the C<$target> is not empty but not an URI, or on
+other errors, the empty string is returned. The C<$source> parameter is not
+checked whether it is an URI because it may be abbreviated (without PREFIX).
 
 =cut
 
@@ -682,28 +700,28 @@ sub _parseline {
 
     return $link unless @$link; # empty line or comment
 
-    my $fullid = $link->[0];
+    my $sourceuri = $link->[0];
     my $prefix = $self->{meta}->{PREFIX};
-    $fullid = $prefix . $fullid if defined $prefix;
+    $sourceuri = $prefix . $sourceuri if defined $prefix;
 
-    if ( !_is_uri($fullid) ) {
-        $link = "id must be URI: $fullid";
+    if ( !_is_uri($sourceuri) ) {
+        $link = "id must be URI: $sourceuri";
         $self->_handle_error( $link, $self->{line}, $line );
         return $link;
     }
 
-    my $fulluri;
+    my $targeturi;
     my $target = $self->{meta}->{TARGET};
     if (defined $target) {
-        $fulluri = $target;
-        my ($id,$label) = ($link->[0], $link->[1]);
-        $fulluri =~ s/{ID}/$id/g;
-        $fulluri =~ s/{LABEL}/uri_escape($label)/eg;
+        $targeturi = $target;
+        my ($source,$label) = ($link->[0], $link->[1]);
+        $targeturi =~ s/{ID}/$source/g;
+        $targeturi =~ s/{LABEL}/uri_escape($label)/eg;
     } else {
-        $fulluri = $link->[3]; 
+        $targeturi = $link->[3];
     }
-    if ( !_is_uri($fulluri) ) {
-        $link = "URI invalid: $fulluri";
+    if ( !_is_uri($targeturi) ) {
+        $link = "URI invalid: $targeturi";
         # TODO: we could encode bad characters etc.
         $self->_handle_error( $link, $self->{line}, $line );
         return $link;
@@ -716,9 +734,9 @@ sub _parseline {
     if ( defined $self->{expected_examples} ) { # examples may contain prefix
         my @idforms = $link->[0];
         push @idforms, $prefix . $link->[0] if defined $prefix;
-        foreach my $id (@idforms) {
-            if ( $self->{expected_examples}->{$id} ) {
-                delete $self->{expected_examples}->{$id};
+        foreach my $source (@idforms) {
+            if ( $self->{expected_examples}->{$source} ) {
+                delete $self->{expected_examples}->{$source};
                 $self->{expected_examples} = undef 
                     unless keys %{ $self->{expected_examples} };
             }
@@ -726,8 +744,8 @@ sub _parseline {
     }
 
     # expand link
-    push @$link, $fullid;
-    push @$link, $fulluri;
+    push @$link, $sourceuri;
+    push @$link, $targeturi;
 
     if ($self->{link_handler}) {
         eval { $self->{link_handler}->( @$link ); };

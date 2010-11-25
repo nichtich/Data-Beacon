@@ -10,6 +10,7 @@ Data::Beacon::Collection - Abstract collection of named BEACON link sets.
 =cut
 
 use Data::Beacon;
+use Data::Beacon::Collection::DBI;
 use Carp;
 
 our $VERSION = '0.0.1';
@@ -26,19 +27,21 @@ for implementation drafts.
 
 =head1 METHODS
 
-=head2 new ( ... )
+=head2 new ( { param => value ... } )
 
-...
+Create a new Beacon collection. Up to know only collections in a
+database (L<Data::Beacon::Collection::DBI>) are supported, so you 
+must specify at least parameter C<dbi> or this method will croak.
 
 =cut
 
 sub new {
-    my $class = shift;
-    my $self = bless { }, $class;
+    my ($class, %param) = @_;
 
-    # ... to start with, we could simply store in a hash ...
-
-    return $self;
+    return Data::Beacon::Collection::DBI->new( %param )
+        if $param{dbi};
+ 
+    croak('Data::Beacon::Collection->new requires parameter dbi');
 }
 
 =head2 get ( $name )

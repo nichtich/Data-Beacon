@@ -15,7 +15,7 @@ use Carp qw(croak);
 use Scalar::Util qw(reftype);
 use DBI;
 
-our $VERSION = '0.0.1';
+our $VERSION = '0.1.0';
 
 =head1 DESCRIPTION
 
@@ -25,7 +25,7 @@ This class is a subclass of L<Data::Beacon::Collection>.
 
 =head2 new ( ... )
 
-...
+Create a new Beacon collection in a database.
 
 =cut
 
@@ -34,6 +34,7 @@ sub new {
     my $self = bless { }, $class;
 
     $self->_init( @_ );
+    croak $self->lasterror if $self->errorcount;
 
     return $self;
 }
@@ -66,10 +67,9 @@ sub get {
 
 =head2 insert ( $name, $beacon )
 
-Insert a named Beacon. This method works as 'upsert',
-that means you can replace or add a Beacon.
-
-Returns the inserted Beacon as L<Data::Beacon::DBI>.
+Insert a named Beacon (L<Data::Beacon>). This method works as 'upsert',
+that means you can replace or add a Beacon. Returns the inserted Beacon
+as L<Data::Beacon::DBI> or undef on error.
 
 =cut
 
@@ -81,41 +81,44 @@ sub insert {
     my $format = $meta{BEACON};
     delete $meta{BEACON};
 
-    # my ($id) = $self->{dbh}->selectrow_array('SELECT MAX(beacon_id) FROM beacons');
-    # $id ||= 1;
+    $self->{dbh}->{RaiseError} = 1;
+    eval {
+        $self->{dbh}->begin_work; # begin transaction
 
-    $self->remove( $name ); # TODO: include this in the transaction
+        my $rows = $self->{dbh}->do('DELETE FROM beacons WHERE bname = ?', {}, $name);
+        $self->{dbh}->do('DELETE FROM links WHERE bname = ?', {}, $name) if $rows > 0;
+ 
+        my $sql='INSERT INTO beacons (bname,bmeta,bvalue) VALUES (?,?,?)';
+        my $sth = $self->{dbh}->prepare($sql);
 
-    # MySQL would need 'ON DUPLICATE KEY UPDATE' unless we remove the Beacon
-    my $sql=<<"SQL";
-INSERT INTO beacons ( beacon_name, beacon_meta, beacon_value )
-VALUES ( ?, ?, ? );
-SQL
-    my $sth = $self->{dbh}->prepare($sql);
+        foreach my $key ( keys %meta ) {
+            my $rv = $sth->execute( $name, $key, $meta{$key} );
+        }
 
-    foreach my $key ( keys %meta ) {
-        my $rv = $sth->execute( $name, $key, $meta{$key} );
+        $sql = 'INSERT INTO links ( bname, source, label, description, target )'
+             . ' VALUES ( ?, ?, ?, ?, ? )';
+        $sth = $self->{dbh}->prepare( $sql );
+        if (!$sth) {
+            $self->_handle_error( $self->{dbh}->errstr );
+            return;
+        }
+
+        $sth->execute_for_fetch( sub { 
+            my $link = $beacon->nextlink();
+            return unless $link;
+            $link = [ $name, $link->[0], $link->[1], $link->[2], $link->[3] ];
+            return $link;
+        } );
+        $sth->finish;
+
+        $self->{dbh}->commit;
+    };
+    if ($@) {
+        $self->{dbh}->{RaiseError} = 0;
+        $self->_handle_error( $@ );
+        return; 
     }
-
-    $sql = <<"SQL";
-INSERT INTO links ( beacon_name, link_id, link_label, link_descr, link_to )
-VALUES ( ?, ?, ?, ?, ? )
-SQL
-    $sth = $self->{dbh}->prepare( $sql );
-    if (!$sth) {
-        $self->_handle_error( $self->{dbh}->errstr );
-        return;
-    }
-
-    $sth->execute_for_fetch( sub { 
-        my $link = $beacon->nextlink();
-        return unless $link;
-        $link = [ $name, $link->[0], $link->[1], $link->[2], $link->[3] ];
-        return $link;
-    } );
-    $sth->finish;
-
-    $self->{dbh}->commit; # TODO: catch errors
+    $self->{dbh}->{RaiseError} = 0;
 
     return $self->get( $name );
 }
@@ -130,12 +133,15 @@ sub remove {
     my ($self, $name) = @_;
     return unless $self->connected;
 
-    my $rows = $self->{dbh}->do('DELETE FROM beacons WHERE beacon_name = ?', {}, $name);
+    $self->{dbh}->begin_work; # begin transaction
+    my $rows = $self->{dbh}->do('DELETE FROM beacons WHERE bname = ?', {}, $name);
     $rows = 1*$rows if defined $rows; # 1*"0E0" = 0
     if ($rows) {
-        $self->{dbh}->do('DELETE FROM links WHERE beacon_name = ?', {}, $name);
-        $self->{dbh}->commit(); # TODO what if the previous do failed?
+        $self->{dbh}->do('DELETE FROM links WHERE bname = ?', {}, $name);
+        $self->{dbh}->commit; # TODO what if the previous do failed?
         return $rows;
+    } else {
+        $self->{dbh}->rollback;
     }
 
     $self->_handle_error( $DBI::errstr ) if $DBI::errstr;
@@ -154,7 +160,7 @@ sub list {
     return () unless $self->connected;
 
     # TODO: query for specific beacons with meta fields
-    my $sql = 'SELECT DISTINCT beacon_name FROM beacons';
+    my $sql = 'SELECT DISTINCT bname FROM beacons';
     my $list = $self->{dbh}->selectall_arrayref($sql);
 
     if ( !$list ) {
@@ -206,13 +212,13 @@ sub _handle_error {
 
 sub _init {
     my $self = shift;
-    my $dsn = shift; # TODO: dsn as param
     my (%param) = @_;
-    
+
     $self->{lasterror} = [];
     $self->{errorcount} = 0;
     $self->{error_handler} = undef;
 
+    my $dsn = $param{dbi};
     $dsn = "dbi:$dsn" unless $dsn =~ /^dbi:/;
 
     if ($param{error}) {
@@ -224,7 +230,7 @@ sub _init {
 
     $self->{dbh} = eval {
         DBI->connect( $dsn, $param{user}, $param{password},
-            { RaiseError => 0, PrintError => 0, AutoCommit => 0 } 
+            { RaiseError => 0, PrintError => 0, AutoCommit => 1 } 
         );
     };
     if ( !$self->{dbh} ) {
@@ -239,7 +245,6 @@ sub _init {
 
     $self->{dbh}->{RaiseError} = 1;
 
-
     my @statements;
 
     # beacons: each line holds one meta field
@@ -247,50 +252,88 @@ sub _init {
 
     eval {
         if ( $driver eq 'sqlite' ) {
-            push @statements, <<"SQL";
+            push @statements, <<'SQL';
 CREATE TABLE IF NOT EXISTS beacons (
-  beacon_name, 
-  beacon_meta, 
-  beacon_value,
-  UNIQUE(beacon_name,beacon_meta) ON CONFLICT REPLACE
+  bname, 
+  bmeta, 
+  bvalue,
+  UNIQUE(bname,bmeta) ON CONFLICT REPLACE
 )
 SQL
-            push @statements, <<"SQL";
+            push @statements, <<'SQL';
 CREATE TABLE IF NOT EXISTS links (
-  beacon_name, 
-  link_id, 
-  link_label, 
-  link_descr, 
-  link_to
+  bname, 
+  source, 
+  label, 
+  description, 
+  target
 )
 SQL
         } elsif ( $driver eq 'mysql' ) {
             push @statements, <<"SQL";
 CREATE TABLE IF NOT EXISTS beacons (
-  beacon_name VARCHAR(32) NOT NULL, 
-  beacon_meta VARCHAR(64) NOT NULL, 
-  beacon_value VARCHAR(128) NOT NULL,
-  UNIQUE(beacon_name,beacon_meta),
-  INDEX(beacon_name,beacon_meta)
+  bname VARCHAR(32) NOT NULL, 
+  bmeta VARCHAR(64) NOT NULL, 
+  bvalue VARCHAR(128) NOT NULL,
+  UNIQUE(bname,bmeta),
+  INDEX(bname,bmeta)
 ) ENGINE=InnoDB
 SQL
             push @statements, <<"SQL";
 CREATE TABLE IF NOT EXISTS links (
-  beacon_name VARCHAR(32) NOT NULL,
-  link_id VARCHAR(64) NOT NULL,
-  link_label VARCHAR(128) NOT NULL,
-  link_descr VARCHAR(128) NOT NULL, 
-  link_to VARCHAR(128) NOT NULL,
-  INDEX (beacon_name),
-  INDEX (beacon_name,link_id)
+  bname VARCHAR(32) NOT NULL,
+  source VARCHAR(64) NOT NULL,
+  label VARCHAR(128) NOT NULL,
+  description VARCHAR(128) NOT NULL, 
+  target VARCHAR(128) NOT NULL,
+  INDEX (bname),
+  INDEX (bname,source)
 ) ENGINE=InnoDB
 SQL
-        } else {
+        } elsif ( $driver eq 'pg' ) {
+            # Postgres does not know CREATE TABLE IF NOT EXISTS :-(
+            push @statements, <<'SQL';
+CREATE OR REPLACE FUNCTION create_beacon_db() returns void AS
+$$
+BEGIN
+    IF NOT EXISTS(SELECT * FROM information_schema.tables WHERE
+        table_catalog = CURRENT_CATALOG AND table_schema = CURRENT_SCHEMA
+        AND table_name = 'beacons') THEN
+
+CREATE TABLE beacons (
+  bname VARCHAR(32) NOT NULL, 
+  bmeta VARCHAR(64) NOT NULL, 
+  bvalue VARCHAR(128) NOT NULL
+);
+
+        CREATE UNIQUE INDEX ON beacons (bname,bmeta);
+
+CREATE TABLE links (
+  bname VARCHAR(32) NOT NULL,
+  source VARCHAR(64) NOT NULL,
+  label VARCHAR(128) NOT NULL,
+  description VARCHAR(128) NOT NULL, 
+  target VARCHAR(128) NOT NULL
+);
+        CREATE INDEX ON links (bname);
+        CREATE INDEX ON links (bname,source);
+    END IF;
+END;
+$$
+language 'plpgsql';
+
+SELECT create_beacon_db();
+SQL
+       } else {
             die ("Unknown DBI driver: '$driver'");
         }
 
+        $self->{dbh}->begin_work; # begin transaction
         foreach my $sql (@statements) {
-            $self->{dbh}->do($sql) or die( $self->{dbh}->errstr );
+            if (!$self->{dbh}->do($sql)) {
+                $self->{dbh}->rollback;
+                die ("Failed to init database");
+            }
         }
         $self->{dbh}->commit;
     };
