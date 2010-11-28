@@ -14,7 +14,7 @@ use Scalar::Util qw(blessed);
 use URI::Escape;
 use Carp;
 
-our $VERSION = '0.2.3';
+our $VERSION = '0.2.4';
 
 use base 'Exporter';
 our @EXPORT = qw(getbeaconlink parsebeaconlink beacon);
@@ -396,10 +396,10 @@ sub parse {
 
 =head2 nextlink
 
-Read the input stream until the next link and return it (pull parsing).
-Returns an array reference for a valid link, or undef after end of parsing.
-This method skips over empty lines and errors, but calls error and link
-handler, if enabled.
+Read from the input stream until the next link has been parsed. Empty lines
+and invalid lines are skipped, but the error handler is called on invalid 
+lines. This method can be used for pull parsing. It eithe returns a link
+as array reference, or undef if the end of input has been reached.
 
 =cut
 
@@ -415,9 +415,9 @@ sub nextlink {
     }
 
     do {
-        my $link = $self->appendline( $line );
-        return $link if ref($link) and @$link; # non-empty array => link
         # proceed on empty lines or errors 
+        return $self->{lastlink} 
+            if defined $self->appendline( $line );
     } while($line = $self->_readline());
 
     return undef; # undef => EOF
@@ -482,7 +482,7 @@ sub parsebeaconlink {
         $link->[2] = shift @parts if @parts;
     }
 
-    return 'URI part has not valid URI form' if @parts; 
+    return ('URI part has not valid URI form: ' . $parts[0]) if @parts; 
 
     return $link;
 }
@@ -525,10 +525,10 @@ sub getbeaconlink {
 
 =head2 appendline( $line )
 
-Append and parse a line of BEACON input format. This method will
-parse the line, call approriate handelers (error handler and/or
-link handler). On success it returns a parsed link as array reference,
-on error it returns the error message as string.
+Append a line of of BEACON format. This method parses the line, and calls the
+link handler, or error handler. In scalar context returns whether a link has
+been read (that can then be accessed with C<lastlink>). In list context, returns
+the parsed link as array, or undef.
 
 =cut
 
@@ -536,27 +536,79 @@ sub appendline {
     my ($self, $line) = @_;
 
     $self->{line}++;
-    my $link = parsebeaconlink( $line, $self->{meta}->{TARGET} );
+    $self->{currentline} = $line;
+    my @parts = split ('\|',$line);
 
-    if (!ref($link)) {
-        $self->_handle_error( $link, $self->{line}, $line );
-        return $link;
+    return if (@parts < 1 || $parts[0] eq '');
+    my $has_link = $self->appendlink( @parts );
+    $self->{currentline} = undef;
+
+    if ( $has_link ) {
+        return wantarray ? @{ $self->{lastlink} } : 1;
+    }
+}
+
+=head2 appendlink ( $source [, $label [, $description [, $target ] ] ] )
+
+Append a link. The link is validated. On error the error handler is called.
+On success the link handler is called. In scalar context returns whether the
+link was valid. In list context returns the list on success.
+
+=cut
+
+sub appendlink {
+    my $self = shift;
+
+    my $n = scalar @_;
+    my $msg = undef;
+
+    if ( $n == 0 || $_[0] eq '' ) {
+        $msg = "missing source";
+    } elsif ( $n > 4 ) {
+        $msg = "found too many parts (>4), divided by '|' characters";
+    } elsif ( grep { $_ =~ /\|/ } @_ ) {
+        $msg = "link parts must not contain '|'";
+    }
+
+    if ($msg) {
+        $self->_handle_error( $msg, $self->{line} ); # TODO currentline in $line
+        return;
+    }
+
+    my @parts = @_;
+    @parts = map { s/^\s+|\s+$//g; $_ } @parts; # trim
+    my $link = [shift @parts,"","",""];
+
+    my $target = $self->{meta}->{TARGET};
+    if ($target) {
+        $link->[1] = shift @parts if @parts;
+        $link->[2] = shift @parts if @parts;
+        # TODO: do we want both #TARGET links and explicit links in one file?
+        $link->[3] = shift @parts if @parts;
+    } else {
+        $link->[3] = pop @parts
+            if ($n > 1 && _is_uri($parts[$n-2]));
+        $link->[1] = shift @parts if @parts;
+        $link->[2] = shift @parts if @parts;
+    }
+
+    if ( @parts ) {
+        $self->_handle_error( 'URI part has no valid URI form: '.$parts[0], $self->{line} );
+        return;
     } 
 
-    return $link unless @$link; # empty line or comment
+    return unless @$link; # empty line or comment
 
     my $sourceuri = $link->[0];
     my $prefix = $self->{meta}->{PREFIX};
     $sourceuri = $prefix . $sourceuri if defined $prefix;
 
     if ( !_is_uri($sourceuri) ) {
-        $link = "id must be URI: $sourceuri";
-        $self->_handle_error( $link, $self->{line}, $line );
-        return $link;
+        $self->_handle_error( "id must be URI: $sourceuri", $self->{line} ); 
+        return;
     }
 
     my $targeturi;
-    my $target = $self->{meta}->{TARGET};
     if (defined $target) {
         $targeturi = $target;
         my ($source,$label) = ($link->[0], $link->[1]);
@@ -566,10 +618,9 @@ sub appendline {
         $targeturi = $link->[3];
     }
     if ( !_is_uri($targeturi) ) {
-        $link = "invalid target URI: $targeturi";
         # TODO: we could encode bad characters etc.
-        $self->_handle_error( $link, $self->{line}, $line );
-        return $link;
+        $self->_handle_error( "invalid target URI: $targeturi", $self->{line} );
+        return;
     }
 
     # Finally we got a valid link
@@ -594,12 +645,15 @@ sub appendline {
 
     if ($self->{link_handler}) {
         eval { $self->{link_handler}->( @$link ); };
-        $self->_handle_error( "link handler died: $@", $self->{line}, $line )
-            if $@;
+        if ( $@ ) {
+            $self->_handle_error( "link handler died: $@", $self->{line} );
+            return;
+        }
     }
 
-    return $link;
+    return wantarray ? @$link : 1; # TODO: return expanded link instead?
 }
+
 =head1 INTERNAL METHODS
 
 If you directly call any of this methods, puppies will die.
@@ -616,8 +670,10 @@ sub _initparams {
     my $self = shift;
     my %param;
 
-    if ( @_ == 1 && !blessed($_[0]) && ref($_[0]) && ref($_[0]) eq 'HASH' ) {
-        %param = ( pre => $_[0], from => undef );
+    if ( @_ % 2 && !blessed($_[0]) && ref($_[0]) && ref($_[0]) eq 'HASH' ) {
+        my $pre = shift;
+        %param = @_;
+        $param{pre} = $pre;
     } else {
         $self->{from} = (@_ % 2) ? shift(@_) : undef;
         %param = @_;
@@ -721,7 +777,7 @@ sub _startparsing {
     } while (defined $line);
 }
 
-=head2 _handle_error ( $msg, $lineno, $line )
+=head2 _handle_error ( $msg, $lineno [, $line ] )
 
 Internal error handler that calls a custom error handler,
 increases the error counter and stores the last error. 
@@ -730,9 +786,11 @@ increases the error counter and stores the last error.
 
 sub _handle_error {
     my $self = shift;
-    $self->{lasterror} = [ @_ ];
+    my ( $msg, $lineno, $line ) = @_;
+    $line = $self->{currentline} unless defined $line;
+    $self->{lasterror} = [ $msg, $lineno, $line ];
     $self->{errorcount}++;
-    $self->{error_handler}->( @_ ) if $self->{error_handler};
+    $self->{error_handler}->( $msg, $lineno, $line ) if $self->{error_handler};
 }
 
 =head2 _readline
@@ -764,7 +822,7 @@ L<Data::Validate::URI>, adopted for performance.
 
 =cut
 
-sub _is_uri{
+sub _is_uri {
     my $value = $_[0];
     
     return unless defined($value);

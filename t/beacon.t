@@ -13,7 +13,6 @@ isa_ok($b,'Data::Beacon');
 
 $b = beacon();
 isa_ok($b,'Data::Beacon');
-
 is( $b->errorcount, 0 );
 
 # meta fields
@@ -85,6 +84,13 @@ is ( $b->meta('target'), 'u:ri:{ID}' );
 
 $b = beacon( $expected );
 is_deeply( { $b->meta() }, $expected );
+is( $b->errorcount, 0 );
+
+my $haserror;
+$b = beacon( $expected, error => sub { $haserror = 1; } ); 
+ok( !$b->errorcount && !$haserror, 'error handler' );
+$b->appendlink('0');
+ok( $b->errorcount && $haserror, 'error handler' );
 
 $b = beacon();
 $b->meta( 'feed' => 'http://example.com', 'target' => 'http://example.com/{ID}' );
@@ -110,7 +116,7 @@ my %t = (
   "qid|lab|dsc|u:ri|foo" 
       => "found too many parts (>4), divided by '|' characters",
   "|qid|u:ri" => [],
-  "qid|lab|dsc|abc" => "URI part has not valid URI form",
+  "qid|lab|dsc|abc" => "URI part has not valid URI form: abc",
 );
 while (my ($line, $link) = each(%t)) {
     $r = parsebeaconlink( $line ); # without prefix or target
@@ -119,6 +125,8 @@ while (my ($line, $link) = each(%t)) {
 
 # with prefix and target
 $b = beacon({PREFIX=>'x:',TARGET=>'y:'});
+ok( $b->appendline( "0|z" ), 'appendline, scalar' );
+
 %t = (
   "qid |u:ri" => ['qid','u:ri','',''] # TODO: add expansion here?
 );
@@ -126,13 +134,18 @@ while (my ($line, $link) = each(%t)) {
     $r = parsebeaconlink( $line, 'http://example.org/{ID}' );
     is_deeply( $r, $link, 'parse link with #TARGET' );
 
-    $r = $b->appendline( $line );
-    if ( ref($r) and @$r) { # non-empty array => link
-        pop @$r if @$r > 4;
-        pop @$r if @$r > 4;
-    }
-    is_deeply( $r, $link, 'appendline' );
+    ok( $b->appendline( $line ), 'appendline, scalar' );
+
+    my @l = $b->appendline( $line );
+    @l = @l[0..3];
+    is_deeply( \@l, $link, 'appendline, list' );
     # TODO: test fullid and fulluri
+
+    ok( $b->appendlink( @l ), 'appendlink, scalar' );
+
+    my @l2 = $b->appendlink( @l );
+    @l2 = @l2[0..3];
+    is_deeply( \@l2, $link, 'appendlink, list' );
 }
 
 
@@ -208,7 +221,6 @@ ok( $b->parse() );
 
 $b = beacon( \"#EXAMPLES: x:a\n#PREFIX x:\na|to:1" );
 ok( $b->parse() );
-
 
 # ensure that IDs are URIs
 $b = beacon( \"xxx |foo" );
