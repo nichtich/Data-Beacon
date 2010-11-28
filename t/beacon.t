@@ -32,9 +32,6 @@ my @badmeta = (
  [ '~' => 'x' ],
  [ 'prefix' => 'htt' ],    # invalid PREFIX
  [ 'Feed' => 'http://#' ], # invalid FEED
- [ 'target' => 'x' ],
- [ 'target' => 'u:ri' ],
- [ 'target' => 'http://example.com' ],
 );
 foreach my $bad (@badmeta) {
     eval { $b->meta( @$bad ); }; ok( $@ );
@@ -82,6 +79,10 @@ $b->meta('count' => 7);
 is( $b->count, 7, 'count()' );
 is( $b->line, 0, 'line()' );
 
+# {ID} or {LABEL} in #TARGET optional
+$b->meta( 'target' => 'u:ri:' );
+is ( $b->meta('target'), 'u:ri:{ID}' );
+
 $b = beacon( $expected );
 is_deeply( { $b->meta() }, $expected );
 
@@ -112,16 +113,26 @@ my %t = (
   "qid|lab|dsc|abc" => "URI part has not valid URI form",
 );
 while (my ($line, $link) = each(%t)) {
-    $r = parsebeaconlink( $line );
+    $r = parsebeaconlink( $line ); # without prefix or target
     is_deeply( $r, $link );
 }
 
+# with prefix and target
+$b = beacon({PREFIX=>'x:',TARGET=>'y:'});
 %t = (
   "qid |u:ri" => ['qid','u:ri','',''] # TODO: add expansion here?
 );
 while (my ($line, $link) = each(%t)) {
     $r = parsebeaconlink( $line, 'http://example.org/{ID}' );
     is_deeply( $r, $link, 'parse link with #TARGET' );
+
+    $r = $b->appendline( $line );
+    if ( ref($r) and @$r) { # non-empty array => link
+        pop @$r if @$r > 4;
+        pop @$r if @$r > 4;
+    }
+    is_deeply( $r, $link, 'appendline' );
+    # TODO: test fullid and fulluri
 }
 
 

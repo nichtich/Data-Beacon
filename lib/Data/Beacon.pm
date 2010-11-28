@@ -62,7 +62,7 @@ See L<http://meta.wikimedia.org/wiki/BEACON> for a more detailed  description.
 
 =head2 SERIALIZING
 
-To only serialize BEACON meta fields, create a new Beacon object and call
+To serialize BEACON only meta fields, create a new Beacon object and call
 the C<metafields> method:
 
   my $beacon = beacon( $hashref_of_metafields );
@@ -172,8 +172,8 @@ sub meta {
               # TODO: transform deprecated $PND etc.?
               $value =~ s/{id}/{ID}/g;
               $value =~ s/{label}/{LABEL}/g;
-              croak 'Invalid #TARGET field: must contain {ID} or {LABEL}'
-                  unless $value =~ /{ID}|{LABEL}/;
+              # TODO: document that {ID} in target is optional (will be appended)
+              $value .= '{ID}' unless $value =~ /{ID}|{LABEL}/; 
               my $uri = $value; 
               $uri =~ s/{ID}|{LABEL}//g;
               croak 'Invalid #TARGET field: must be an URI pattern'
@@ -371,7 +371,7 @@ sub parse {
     $line = $self->_readline() unless defined $line;
 
     while (defined $line) {
-        $self->_parseline( $line );
+        $self->appendline( $line );
         $line = $self->_readline();
     } 
 
@@ -415,7 +415,7 @@ sub nextlink {
     }
 
     do {
-        my $link = $self->_parseline( $line );
+        my $link = $self->appendline( $line );
         return $link if ref($link) and @$link; # non-empty array => link
         # proceed on empty lines or errors 
     } while($line = $self->_readline());
@@ -523,6 +523,83 @@ sub getbeaconlink {
     return join('|', @link);
 }
 
+=head2 appendline( $line )
+
+Append and parse a line of BEACON input format. This method will
+parse the line, call approriate handelers (error handler and/or
+link handler). On success it returns a parsed link as array reference,
+on error it returns the error message as string.
+
+=cut
+
+sub appendline {
+    my ($self, $line) = @_;
+
+    $self->{line}++;
+    my $link = parsebeaconlink( $line, $self->{meta}->{TARGET} );
+
+    if (!ref($link)) {
+        $self->_handle_error( $link, $self->{line}, $line );
+        return $link;
+    } 
+
+    return $link unless @$link; # empty line or comment
+
+    my $sourceuri = $link->[0];
+    my $prefix = $self->{meta}->{PREFIX};
+    $sourceuri = $prefix . $sourceuri if defined $prefix;
+
+    if ( !_is_uri($sourceuri) ) {
+        $link = "id must be URI: $sourceuri";
+        $self->_handle_error( $link, $self->{line}, $line );
+        return $link;
+    }
+
+    my $targeturi;
+    my $target = $self->{meta}->{TARGET};
+    if (defined $target) {
+        $targeturi = $target;
+        my ($source,$label) = ($link->[0], $link->[1]);
+        $targeturi =~ s/{ID}/$source/g;
+        $targeturi =~ s/{LABEL}/uri_escape($label)/eg;
+    } else {
+        $targeturi = $link->[3];
+    }
+    if ( !_is_uri($targeturi) ) {
+        $link = "invalid target URI: $targeturi";
+        # TODO: we could encode bad characters etc.
+        $self->_handle_error( $link, $self->{line}, $line );
+        return $link;
+    }
+
+    # Finally we got a valid link
+    $self->{lastlink} = $link;
+    $self->{meta}->{COUNT}++;
+
+    if ( defined $self->{expected_examples} ) { # examples may contain prefix
+        my @idforms = $link->[0];
+        push @idforms, $prefix . $link->[0] if defined $prefix;
+        foreach my $source (@idforms) {
+            if ( $self->{expected_examples}->{$source} ) {
+                delete $self->{expected_examples}->{$source};
+                $self->{expected_examples} = undef 
+                    unless keys %{ $self->{expected_examples} };
+            }
+        }
+    }
+
+    # expand link
+    push @$link, $sourceuri;
+    push @$link, $targeturi;
+
+    if ($self->{link_handler}) {
+        eval { $self->{link_handler}->( @$link ); };
+        $self->_handle_error( "link handler died: $@", $self->{line}, $line )
+            if $@;
+    }
+
+    return $link;
+}
 =head1 INTERNAL METHODS
 
 If you directly call any of this methods, puppies will die.
@@ -678,82 +755,6 @@ sub _readline {
     } else {
         return @{$self->{inputlines}} ? shift(@{$self->{inputlines}}) : undef;
     }
-}
-
-=head2 _parseline ( $line )
-
-Internally parse a line and call appropriate handlers etc.
-Returns a link as array reference, or an error message as string.
-
-=cut
-
-sub _parseline {
-    my ($self, $line) = @_;
-
-    $self->{line}++;
-    my $link = parsebeaconlink( $line, $self->{meta}->{TARGET} );
-
-    if (!ref($link)) {
-        $self->_handle_error( $link, $self->{line}, $line );
-        return $link;
-    } 
-
-    return $link unless @$link; # empty line or comment
-
-    my $sourceuri = $link->[0];
-    my $prefix = $self->{meta}->{PREFIX};
-    $sourceuri = $prefix . $sourceuri if defined $prefix;
-
-    if ( !_is_uri($sourceuri) ) {
-        $link = "id must be URI: $sourceuri";
-        $self->_handle_error( $link, $self->{line}, $line );
-        return $link;
-    }
-
-    my $targeturi;
-    my $target = $self->{meta}->{TARGET};
-    if (defined $target) {
-        $targeturi = $target;
-        my ($source,$label) = ($link->[0], $link->[1]);
-        $targeturi =~ s/{ID}/$source/g;
-        $targeturi =~ s/{LABEL}/uri_escape($label)/eg;
-    } else {
-        $targeturi = $link->[3];
-    }
-    if ( !_is_uri($targeturi) ) {
-        $link = "URI invalid: $targeturi";
-        # TODO: we could encode bad characters etc.
-        $self->_handle_error( $link, $self->{line}, $line );
-        return $link;
-    }
-
-    # Finally we got a valid link
-    $self->{lastlink} = $link;
-    $self->{meta}->{COUNT}++;
-
-    if ( defined $self->{expected_examples} ) { # examples may contain prefix
-        my @idforms = $link->[0];
-        push @idforms, $prefix . $link->[0] if defined $prefix;
-        foreach my $source (@idforms) {
-            if ( $self->{expected_examples}->{$source} ) {
-                delete $self->{expected_examples}->{$source};
-                $self->{expected_examples} = undef 
-                    unless keys %{ $self->{expected_examples} };
-            }
-        }
-    }
-
-    # expand link
-    push @$link, $sourceuri;
-    push @$link, $targeturi;
-
-    if ($self->{link_handler}) {
-        eval { $self->{link_handler}->( @$link ); };
-        $self->_handle_error( "link handler died: $@", $self->{line}, $line )
-            if $@;
-    }
-
-    return $link;
 }
 
 =head2 _is_uri
