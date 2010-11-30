@@ -40,14 +40,8 @@ pod2usage( -msg => $msg, -verbose => 1 )
     if $help or (@ARGV and $ARGV[0] eq 'help');
 pod2usage(-verbose => 2) if $man;
 
-sub error_handler {
-    my ($msg, $lineno, $line) = @_;
-    $msg .= " at line $lineno" if defined $lineno;
-    print STDERR "$msg\n";
-}
-
-my %handlers = ( error => \&error_handler );
-$handlers{error} = undef if $quiet;
+my %handlers = ( errors => 'print' );
+$handlers{errors} = undef if $quiet;
 
 if ( $configfile ) {
     open (CNF, $configfile) || failed("could not open config file: $configfile");
@@ -181,16 +175,6 @@ if ( $collection ) {
     }
 }
 
-# TODO: put this into the package and test it
-sub tmp_expand {
-    my ($id, $label, $description, $to, $fullid, $fulluri) = @_;
-    my @link = $fullid;
-    push @link, $label if $label ne '' or $description ne '';
-    push @link, $description if $description ne '';
-    push @link, $fulluri;
-    return @link;
-}
-
 # Now finally do something
 
 if ( $cmd eq 'parse' ) { # parse a file
@@ -203,14 +187,12 @@ if ( $cmd eq 'parse' ) { # parse a file
     print $beacon->metafields(); 
 } elsif( $cmd eq 'dump' ) { # dump a full, parsed beacon file
     print $beacon->metafields() unless $linksmode;
-    $beacon->parse(
-        'link' => sub { print getbeaconlink(@_) . "\n"; }
-    );
+    $beacon->parse( 'link' => 'print' );
     # TODO: we may warn on errors, wrong count etc.
 } elsif( $cmd eq 'expand' ) { # dump a full, parsed beacon file
     $beacon->parse(
-        'link' => sub {  
-            print join('|', tmp_expand(@_)) . "\n";
+        links => sub { # TODO 'link' => 'expand'
+            print join('|', $beacon->expandlink(@_)) . "\n";
         }
     );
 } elsif( $cmd =~ /^query(expand)?$/ ) {
@@ -220,17 +202,16 @@ if ( $cmd eq 'parse' ) { # parse a file
         if ($links) {
             foreach my $l (@$links) {
                 if ( $expand ) { # TODO move to the library
-                    my @el = tmp_expand(@$l);
-                    print join('|', tmp_expand(@$l)) . "\n";
+                    print join('|', $beacon->expandlink(@$l)) . "\n";
                 } else {
-                    print getbeaconlink(@$l)."\n";
+                    print plainbeaconlink(@$l)."\n";
                 }
             }
         }
     } else {
         # start parsing
         while ( my $link = $beaconfile->nextlink() ) {
-            print getbeaconlink(@$link)."\n" if $link->[0] eq $query;
+            print plainbeaconlink(@$link)."\n" if $link->[0] eq $query;
         }
     }
 } elsif( $cmd eq 'list' ) {
