@@ -87,7 +87,8 @@ $b = beacon( { TARGETPREFIX => 'http://foo.org/' } );
 ok( !$b->lasterror );
 my @l = $b->appendlink("f:rom","","","x");
 # TODO: test via $b->expandlink( )
-is_deeply( \@l, ['f:rom','','','x','f:rom','http://foo.org/x'], 'targetprefix' );
+is_deeply( \@l, ['f:rom','','','x'], 'targetprefix' );
+is_deeply( [ $b->expanded ], ['f:rom','','','http://foo.org/x'], 'targetprefix' );
 
 eval { $b = beacon( { TARGET => 'u:ri', TARGETPREFIX => 'http://foo.org/' } ); };
 ok( $@, 'TARGET and TARGETPREFIX cannot be set both' );
@@ -97,6 +98,13 @@ is_deeply( { $b->meta() }, $expected );
 is( $b->errorcount, 0 );
 
 my $haserror;
+
+$b = beacon( errors => sub { $haserror = 1; } ); 
+$b->meta('PREFIX','x:');
+$b->meta('TARGETPREFIX','y:');
+ok( $b->appendlink('0','','','0'), 'zero is valid source' );
+ok( !$b->errorcount && !$haserror, 'error handler' );
+
 $b = beacon( $expected, errors => sub { $haserror = 1; } ); 
 ok( !$b->errorcount && !$haserror, 'error handler' );
 $b->appendlink('0');
@@ -107,10 +115,16 @@ $b->meta( 'feed' => 'http://example.com', 'target' => 'http://example.com/{ID}' 
 $b->meta( 'target' => 'http://example.com/{LABEL}' );
 is( $b->meta('target'), 'http://example.com/{LABEL}' );
 
-is( parsebeaconlink( undef ), undef );
+$b = beacon();
+ok (! $b->appendline( undef ), 'undef line');
+
+my %t;
+
+=head1
+# split BEACON format link without validating or expanding
 
 # line parsing (invalid URI not checked)
-my %t = (
+%t = (
   "qid" => ["qid","","",""],
   "qid|\t" => ["qid","","",""],
   "qid|" => ["qid","","",""],
@@ -129,9 +143,14 @@ my %t = (
   "qid|lab|dsc|abc" => "URI part has not valid URI form: abc",
 );
 while (my ($line, $link) = each(%t)) {
-    $r = parsebeaconlink( $line ); # without prefix or target
-    is_deeply( $r, $link );
+    # my @l = $b->appendline( $line );
+use Data::Dumper;
+print "L:$line\n";
+print Dumper(\@l)."\n";
+    #$r = parsebeaconlink( $line ); # without prefix or target
+    #is_deeply( \@l, $link );
 }
+=cut
 
 # with prefix and target
 $b = beacon({PREFIX=>'x:',TARGET=>'y:'});
@@ -141,9 +160,6 @@ ok( $b->appendline( "0|z" ), 'appendline, scalar' );
   "qid |u:ri" => ['qid','u:ri','',''] # TODO: add expansion here?
 );
 while (my ($line, $link) = each(%t)) {
-    $r = parsebeaconlink( $line, 'http://example.org/{ID}' );
-    is_deeply( $r, $link, 'parse link with #TARGET' );
-
     ok( $b->appendline( $line ), 'appendline, scalar' );
 
     my @l = $b->appendline( $line );
@@ -171,9 +187,8 @@ is_deeply( { $b->meta() }, {
 is( $b->line, 6, 'line()' );
 $b->parse();
 is( $b->lasterror, "found too many parts (>4), divided by '|' characters" );
-
-
 is( $b->errorcount, 1 );
+is( $b->count, 6 );
 
 eval { $b = beacon( errors => 'xxx' ); }; ok( $@, 'error handler' );
 is( $b->errorcount, 1 );
@@ -195,18 +210,21 @@ is( $b->errorcount, 1, 'cannot parse a hashref' );
 $b->parse( \"x:from|x:to\n\n|comment" );
 is( $b->count, 1, 'parse from string' );
 is( $b->line, 3, '' );
-is_deeply( $b->lastlink, ['x:from','','','x:to','x:from','x:to'] );
+is_deeply( [$b->link], ['x:from','','','x:to'] );
+is_deeply( [$b->expanded], ['x:from','','','x:to'] );
 
 $b->parse( \"\xEF\xBB\xBFx:from|x:to", links => sub { @l = @_; } );
 is( $b->line, 1 );
 is( $b->errorcount, 0 );
-is_deeply( \@l, [ 'x:from', '', '', 'x:to', 'x:from', 'x:to' ], 'BOM' );
+is_deeply( \@l, [ 'x:from', '', '', 'x:to' ], 'BOM' );
+
 
 my @tmplines = ( '#FOO: bar', '#DOZ', '#BAZ: doz' );
 $b->parse( from => sub { return shift @tmplines; } );
 is( $b->line, 3, 'parse from code ref' );
 is( $b->count, 0, '' );
 is( $b->metafields, "#FORMAT: BEACON\n#BAZ: doz\n#FOO: bar\n#COUNT: 0\n" );
+is( $b->link, undef, 'no links' );
 
 $b->parse( from => sub { die 'hard'; } );
 is( $b->errorcount, 1 );
@@ -239,18 +257,19 @@ is_deeply( [ $b->lasterror ], [ 'source is no URI: xxx',1,'xxx |foo' ],
 
 # pull parsing
 $b = beacon( \"\nid:1|t:1\n|comment\n" );
-is_deeply( $b->nextlink, ["id:1","","","t:1",'id:1','t:1'] );
-is_deeply( $b->nextlink, undef );
-is_deeply( $b->lastlink, ["id:1","","","t:1",'id:1','t:1'] );
+is_deeply( [$b->nextlink], ["id:1","","","t:1"] );
+is_deeply( [$b->expanded], ["id:1","","","t:1"] );
+is_deeply( [$b->nextlink], [] );
+is_deeply( [$b->link], ["id:1","","","t:1"], 'last link' );
 
 $b = beacon( \"id:1|t:1\na b|\nid:2|t:2" );
-is_deeply( $b->nextlink, ["id:1","","","t:1",'id:1','t:1'] );
-is_deeply( $b->nextlink, ["id:2","","","t:2",'id:2','t:2'] );
-is_deeply( $b->lastlink, ["id:2","","","t:2",'id:2','t:2'] );
-is( $b->nextlink, undef );
+is_deeply( [$b->nextlink], ["id:1","","","t:1"] );
+# a b| is ignored
+is_deeply( [$b->nextlink], ["id:2","","","t:2"] );
+is_deeply( [$b->link], ["id:2","","","t:2"] );
+ok( !$b->nextlink );
 is( $b->errorcount, 1 );
 is_deeply( [ $b->lasterror ], [ 'source is no URI: a b',2,'a b|' ] );
-
 
 use Data::Validate::URI qw(is_uri);
 
@@ -284,13 +303,17 @@ while (@p) {
 
     $line = "#TARGET: foo:{ID}\n$line";
     $b = beacon( \$line );
-    my $l = $b->nextlink(); # TODO: nextlink will return shorter
+    my $l = [$b->nextlink];
     @$in = map { s/^\s+|\s+$//g; $_; } @$in;
     push (@$in,'') while ( @$in < 4 );
-    push @$in, "http://example.org/".$in->[0];
-    push @$in, "foo:".$in->[0];
 
     is_deeply( $in, $l, 'plainbeaconlink + PREFIX + TARGET' );
+
+    my @exp = @$in;
+    my $id = $in->[0];
+    $exp[0] = "http://example.org/$id";
+    $exp[3] = "foo:$id";
+    is_deeply( [$b->expanded], \@exp, 'plainbeaconlink + PREFIX + TARGET' );
 }
 
 @p = ( # with 'to' field
@@ -313,9 +336,9 @@ while (@p) {
     $line = "#PREFIX: http://example.org/\n$line";
     $b = beacon( \$line );
 
-    my $l = $b->nextlink();
-    pop @$l; # fullid
-    pop @$l; # fulluri
+    my $l = [$b->nextlink];
+    #pop @$l; # fullid
+    #pop @$l; # fulluri
     
     is_deeply($l, $in);
 }
@@ -326,24 +349,29 @@ is('x', plainbeaconlink('x','','','','foo','bar'));
 # link expansion
 
 $b = beacon( \"#TARGET: http://foo.org/{LABEL}\nf:rom|x" );
-is_deeply( $b->nextlink, ['f:rom','x','','','f:rom','http://foo.org/x'] );
+is_deeply( [$b->nextlink], ['f:rom','x','',''] );
+is_deeply( [$b->expanded], ['f:rom','x','',,'http://foo.org/x'] );
 
 $b = beacon( \"#TARGET: http://foo.org/{ID}\nx:y" );
-is_deeply( $b->nextlink, ['x:y','','','','x:y','http://foo.org/x:y'] );
+is_deeply( [$b->nextlink], ['x:y','','',''] );
+is_deeply( [$b->expanded], ['x:y','','',,'http://foo.org/x:y'] );
+
 
 $b = beacon( \"#PREFIX: u:\n#TARGET: z:{ID}\n\$1" );
-is_deeply( $b->nextlink, ['$1','','','','u:$1','z:$1'] );
+is_deeply( [$b->nextlink], ['$1','','','']);
+is_deeply( [$b->expanded], ['u:$1','','','z:$1'] );
 
 $b = beacon( \"a:b|c:d" );
-is_deeply( $b->nextlink, ['a:b','','','c:d','a:b','c:d'] );
+is_deeply( [$b->nextlink], ['a:b','','','c:d']);
+is_deeply( [$b->expanded], ['a:b','','','c:d'] );
 
 $b = beacon( \"#TARGET: f:{ID}\na:b|c:d" );
-is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:a:b'],
-    'TARGET changes parsing' );
+is_deeply( [$b->nextlink], ['a:b','c:d','',''] );
+is_deeply( [$b->expanded], ['a:b','c:d','','f:a:b'], 'TARGET changes parsing' );
 
 $b = beacon( \"#TARGET: f:{LABEL}\na:b|c:d" );
-is_deeply( $b->nextlink, ['a:b','c:d','','','a:b','f:c%3Ad'],
-    'TARGET changes parsing' );
+is_deeply( [$b->nextlink], ['a:b','c:d','','']);
+is_deeply( [$b->expanded],['a:b','c:d','','f:c%3Ad'], 'TARGET changes parsing' );
 
 # croaking link handler
 $b = beacon( \"#TARGET: f:{LABEL}\na:b|c:d", links => sub { die 'bad' } );

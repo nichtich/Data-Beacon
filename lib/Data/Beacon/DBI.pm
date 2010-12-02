@@ -189,10 +189,10 @@ sub nextlink {
     return [ $self->_expanded_link( $link ) ];
 }
 
-=head2 lastlink
+=head2 link
 
-Returns the last link when iterating.
-Implemented L<in Data::Beacon|Data::Beacon/lastlink>.
+Returns the last valid link, that has been read.
+Implemented L<in Data::Beacon|Data::Beacon/link>.
 
 =cut
 

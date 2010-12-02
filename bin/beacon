@@ -187,14 +187,13 @@ if ( $cmd eq 'parse' ) { # parse a file
     print $beacon->metafields(); 
 } elsif( $cmd eq 'dump' ) { # dump a full, parsed beacon file
     print $beacon->metafields() unless $linksmode;
-    $beacon->parse( 'link' => 'print' );
+    $beacon->parse( links => 'print' );
     # TODO: we may warn on errors, wrong count etc.
 } elsif( $cmd eq 'expand' ) { # dump a full, parsed beacon file
-    $beacon->parse(
-        links => sub { # TODO 'link' => 'expand'
-            print join('|', $beacon->expandlink(@_)) . "\n";
-        }
-    );
+    $beacon->parse( links => 'expand' );
+        # links => sub { # TODO: implement this method
+        #    print join('|', $beacon->expandlink(@_)) . "\n";
+        # });
 } elsif( $cmd =~ /^query(expand)?$/ ) {
     my $expand = $1;
     if ( $beacon->can('query') ) {
@@ -210,8 +209,8 @@ if ( $cmd eq 'parse' ) { # parse a file
         }
     } else {
         # start parsing
-        while ( my $link = $beaconfile->nextlink() ) {
-            print plainbeaconlink(@$link)."\n" if $link->[0] eq $query;
+        while ( my @link = $beaconfile->nextlink ) {
+            print plainbeaconlink(@link)."\n" if $link[0] eq $query;
         }
     }
 } elsif( $cmd eq 'list' ) {

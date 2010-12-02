@@ -30,8 +30,8 @@ is( $col->get('foo'), undef );
 
 use_ok('Data::Beacon');
 my $b1 = beacon('t/beacon2.txt');
-
 my $b2 = $col->insert( 'foo', $b1 );
+
 is_deeply( [ $col->list ], ['foo'] );
 is( $b2->count, $b1->count, 'same count' );
 is( $b2->metafields, $b1->metafields, 'same meta' );
