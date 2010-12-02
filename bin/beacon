@@ -8,7 +8,7 @@ beacon - beacon command line client
 
 use strict;
 
-our $VERSION = '0.2.3';
+our $VERSION = '0.2.4';
 
 use Getopt::Long;
 use Pod::Usage;
@@ -34,6 +34,7 @@ GetOptions(
     "dbi:s" => \$dbi,
     "user:s" => \$user,
     "password:s" => \$password,
+    # TODO: head and tail
 ) or pod2usage(2);
 my $msg = "beacon version $VERSION (based on Data::Beacon ${Data::Beacon::VERSION})";
 pod2usage( -msg => $msg, -verbose => 1 ) 
@@ -73,6 +74,11 @@ if ( $dbi ) {
 }
 
 # additional sophisticated command line parsing follows
+my %metafields;
+while (@ARGV[0] =~ /^([^=]*)=(.*)$/) {
+    $metafields{$1} = $2;
+    shift @ARGV;
+}
 
 my $cmd = shift @ARGV;
 
@@ -109,7 +115,12 @@ unless ($cmd) {
 if (defined $premeta) {
     my $m = beacon($premeta);
     failed( $m->lasterror ) if $m->errorcount;
-    $handlers{pre} = { $m->meta() };
+    $handlers{pre}= { $m->meta() };
+}
+
+$handlers{pre} = { } if (%metafields && !$handlers{pre});
+foreach (keys %metafields) {
+    $handlers{pre}->{$_} = $metafields{$_};
 }
 
 sub requirefile {
@@ -251,7 +262,7 @@ __END__
 
 =head1 SYNOPSIS
 
-beacon [ <options> ] [ <command> <name> ] [ <file> ]
+beacon [ <options> ] {KEY=VALUE} [ <command> <name> ] [ <file> ]
 
 =head1 ARGUMENTS
 

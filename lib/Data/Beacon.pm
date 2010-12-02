@@ -360,14 +360,6 @@ Description as string. This may be the empty string.
 Link target as given in BEACON format.
 This may be abbreviated or the empty string.
 
-=item C<$sourceuri>
-
-Expanded link source as URI.
-
-=item C<$targeturi>
-
-Expanded link target as URI.
-
 =back
 
 The number of sucessfully parsed links is returned by C<count>.
@@ -462,7 +454,8 @@ target), possibly expanded by the meta fields PREFIX, TARGET/TARGETPREFIX.
 
 sub expanded {
     my $self = shift;
-    return $self->_expandlink( $self->{link} ) if $self->{link};
+    $self->_expandlink( $self->{link} ) if $self->{link};
+    return @{$self->{link}};
 }
 
 =head2 expandlink ( $source, $label, $description, $target )
@@ -564,11 +557,9 @@ sub appendlink {
     } 
 
     return unless @$link; # empty line or comment
-#use Data::Dumper;
-#print "L: ".Dumper($link) . "\n";
 
     my @exp = @$link;
-    $self->_expandlink( \@exp );
+    $self->_expandlink( \@exp ); # TODO: check only
 
     if ( !_is_uri($exp[0]) ) {
         $self->_handle_error( "source is no URI: ".$exp[0] ); 
@@ -580,7 +571,7 @@ sub appendlink {
         return;
     }
 
-    #$link = $self->validatelink
+    # finally got valud link
 
     $self->{link} = $link;
     $self->{meta}->{COUNT}++;
@@ -604,6 +595,7 @@ sub appendlink {
          } elsif ( $self->{link_handler} eq 'expand' ) { 
             print join('|',$self->expanded) . "\n"; 
          } else {
+            # TODO: call with expanded link on request
             eval { $self->{link_handler}->( $self->link ); };
             if ( $@ ) {
                 $self->_handle_error( "link handler died: $@" );
@@ -631,9 +623,11 @@ sub beacon {
 
 =head2 plainbeaconlink ( $source, $label, $description, $target )
 
-Serialize a link, consisting of source (mandatory), and label, description,
-and target (all optional) as condensed string in BEACON format. This function
-does not check whether the arguments form a valid link or not!
+Serialize a link, consisting of source (mandatory), label, description,
+and target (all optional) as condensed string in BEACON format. This
+function does not check whether the arguments form a valid link or not.
+You can pass a simple link, as returned by the L</link> method, or an
+expanded link, as returned by L</expanded>.
 
 =cut
 
@@ -839,11 +833,11 @@ sub _readline {
     }
 }
 
-
 =head1 _expandlink ( $link }
 
-Expand a link, provided as array reference without validation -
-source and target must still be checked whether they are valid URIs.
+Expand a link, provided as array reference without validation. The link
+must have four defined, trimmed fields. After expansion, source and target
+must still be checked whether they are valid URIs.
 
 =cut
 
@@ -851,13 +845,48 @@ sub _expandlink {
     my ($self, $link) = @_;
 
     my $prefix = $self->{meta}->{PREFIX};
-    my $target = $self->{meta}->{TARGET};
-    my $targetprefix = $self->{meta}->{TARGETPREFIX};
 
     my $source = $link->[0];
 
+    # TODO: document this expansion
+    if ( $link->[1] =~ /^[0-9]*$/ ) { # if label is number (of hits) or empty
+        my $label = $link->[1];
+        my $descr = $link->[2];
+
+        # TODO: handle zero hits
+        my $msg = $self->{meta}->{$label eq '1' ? 'ONEMESSAGE' : 'SOMEMESSAGE'}
+                || $self->{meta}->{'MESSAGE'};
+
+        if ( defined $msg ) {
+            _str_replace( $msg, '{id}', $link->[0] ); # unexpanded
+            _str_replace( $msg, '{hits}', $link->[1] );
+            _str_replace( $msg, '{label}', $link->[1] );
+            _str_replace( $msg, '{description}', $link->[2] ); 
+            _str_replace( $msg, '{target}', $link->[3] ); # unexpanded
+        } else {
+            $msg = $self->{meta}->{'NAME'} || $self->{meta}->{'INSTITUTION'};
+        }
+        if ( defined $msg && $msg ne '' ) {
+            # if ( $link->[1] == "") $descr = $label;
+            $link->[1] = $msg;
+            $link->[1] =~ s/^\s+|\s+$//g;
+            $link->[1] =~ s/\s+/ /g;
+        }
+    } else {
+        _str_replace( $link->[1], '{id}', $link->[0] ); # unexpanded
+        _str_replace( $link->[1], '{description}', $link->[2] );
+        _str_replace( $link->[1], '{target}', $link->[3] ); # unexpanded
+        # trim label, because it may have changed
+        $link->[1] =~ s/^\s+|\s+$//g;
+        $link->[1] =~ s/\s+/ /g;
+    }
+
+    # expand source
     $link->[0] = $prefix . $link->[0] if defined $prefix;
 
+    # expand target
+    my $target = $self->{meta}->{TARGET};
+    my $targetprefix = $self->{meta}->{TARGETPREFIX};
     if (defined $target) {
         $link->[3] = $target;
         my $label = $link->[1];
@@ -867,9 +896,12 @@ sub _expandlink {
         $link->[3] = $targetprefix . $link->[3];
     }
 
-    # TODO: more expansion (MESSAGE etc.)
 
     return @$link;
+}
+
+sub _str_replace {
+    $_[0] =~ s/\Q$_[1]\E/$_[2]/g;
 }
 
 =head2 _is_uri
