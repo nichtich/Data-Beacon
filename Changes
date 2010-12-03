@@ -1,14 +1,19 @@
 Revision history for Perl package Data::Beacon
+==============================================
+'*' indicates a revision also published at CPAN.
+
+0.2.5 2010-12-03*
+    - refactored
 
 0.2.3 2010-11-24
-    * added simple Beacon collections with DBI
+    - added simple Beacon collections with DBI
 
-0.2.1 2010-11-02
-     * minor fixes and extensions
+0.2.1 2010-11-02*
+    - minor fixes and extensions
 
 0.2 2010-11-02
-     * first full-featured version
+    - first full-featured version
 
 0.1 2010-10-27
-     * first public developer version at github
+    - first public developer version at github
 
