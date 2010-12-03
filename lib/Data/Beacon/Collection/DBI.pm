@@ -104,7 +104,8 @@ sub insert {
         }
 
         $sth->execute_for_fetch( sub { 
-            my @link = $beacon->nextlink || return;
+            my @link = $beacon->nextlink;
+            return unless @link;
             my $link = [ $name, $link[0], $link[1], $link[2], $link[3] ];
             return $link;
         } );
