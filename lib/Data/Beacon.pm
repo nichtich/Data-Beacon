@@ -14,7 +14,7 @@ use Scalar::Util qw(blessed);
 use URI::Escape;
 use Carp;
 
-our $VERSION = '0.2.4';
+our $VERSION = '0.2.5';
 
 use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
@@ -454,8 +454,10 @@ target), possibly expanded by the meta fields PREFIX, TARGET/TARGETPREFIX.
 
 sub expanded {
     my $self = shift;
-    $self->_expandlink( $self->{link} ) if $self->{link};
-    return @{$self->{link}};
+    if ( $self->{link} ) {
+        $self->_expandlink( $self->{link} );
+        return @{$self->{link}};
+    }
 }
 
 =head2 expandlink ( $source, $label, $description, $target )
@@ -469,9 +471,18 @@ object, nor call any handlers.
 
 sub expandlink {
     my $self = shift;
-    my ($id, $label, $description, $to) = @_;
 
-    # TODO: checklink, parselink, expandlink
+    my @fields = @_ > 0 ? @_ : '';
+    @fields = map { s/^\s+|\s+$//g; $_ }
+              map { defined $_ ? $_ : '' } @fields;
+
+    return if $fields[0] eq '' or (grep { $_ =~ /\||\n|\r/ } @fields);
+
+    $self->_expandlink( \@fields );
+
+    return unless _is_uri($fields[0]) && _is_uri($fields[3]);
+
+    return @fields;
 }
 
 =head2 appendline( $line )
@@ -486,14 +497,16 @@ the parsed link as list, or the empty list, if the line could not be parsed.
 sub appendline {
     my ($self, $line) = @_;
     return unless defined $line;
+    chomp $line;
 
     $self->{line}++;
     $self->{currentline} = $line;
     my @parts = split ('\|',$line);
 
     return if (@parts < 1 || $parts[0] =~ /^\s*$/ );
+    my $link = $self->_fields( @parts );
 
-    my $has_link = $self->appendlink( @parts );
+    my $has_link = $self->appendlink( @$link );
 
     $self->{currentline} = undef;
 
@@ -506,80 +519,43 @@ sub appendline {
 
 =head2 appendlink ( $source [, $label [, $description [, $target ] ] ] )
 
-Append a link. The link is validated. On error the error handler is called.
-On success the link handler is called. Returns the link as list of four 
-values, or an empty list.
+Append a link. The link is validated and returned as list of four values.
+On error the error handler is called and an empty list is returned.
+On success the link handler is called.
 
 =cut
 
 sub appendlink {
     my $self = shift;
-    my $msg = undef;
 
-    my @parts = @_;
-    @parts = map { s/^\s+|\s+$//g; $_ }  # trim 
-             map { defined $_ ? $_ : '' } @parts;
+    my @fields = map { defined $_ ? $_ : '' } @_[0..3];
+    @fields = map { s/^\s+|\s+$//g; $_ } @fields;
 
-    my $n = scalar @parts;
-    if ( $n == 0 || $parts[0] eq '' ) {
-        $msg = "missing source";
-    } elsif ( $n > 4 ) {
-        $msg = "found too many parts (>4), divided by '|' characters";
-    } elsif ( grep { $_ =~ /\|/ } @parts ) {
-        $msg = "link parts must not contain '|'";
-    }
-
-    if ($msg) {
-        $self->_handle_error( $msg );
+    if ( $fields[0] eq '' ) {
+        $self->_handle_error( 'missing source' );
+        return;
+    } elsif ( grep { $_ =~ /\|/ } @fields ) {
+        $self->_handle_error( 'link fields must not contain \'|\'' );
+        return;
+    } elsif ( grep { $_ =~ /[\n\r]/ } @fields ) {
+        $self->_handle_error( 'link fields must not contain line breaks' );
         return;
     }
 
-    my $link = [shift @parts,"","",""];
-  
-    # TODO: this belongs to line parsing only!
-    my $target = $self->{meta}->{TARGET};
-    my $targetprefix = $self->{meta}->{TARGETPREFIX};
-    if ($target or $targetprefix) {
-        $link->[1] = shift @parts if @parts;
-        $link->[2] = shift @parts if @parts;
-        # TODO: do we want both #TARGET links and explicit links in one file?
-        $link->[3] = shift @parts if @parts;
-    } else {
-        $link->[3] = pop @parts
-            if ($n > 1 && _is_uri($parts[$n-2]));
-        $link->[1] = shift @parts if @parts;
-        $link->[2] = shift @parts if @parts;
-    }
-
-    if ( @parts ) {
-        $self->_handle_error( 'URI part has no valid URI form: '.$parts[0] );
-        return;
-    } 
-
-    return unless @$link; # empty line or comment
-
-    my @exp = @$link;
-    $self->_expandlink( \@exp ); # TODO: check only
-
-    if ( !_is_uri($exp[0]) ) {
-        $self->_handle_error( "source is no URI: ".$exp[0] ); 
-        return;
-    }
-    if ( !_is_uri($exp[3]) ) {
-        # TODO: we could encode bad characters etc.
-        $self->_handle_error( "invalid target URI: ",$exp[3] );
+    my $msg = $self->_checklink( @fields );
+    if ( $msg ) {
+        $self->_handle_error( $msg ); 
         return;
     }
 
-    # finally got valud link
-
-    $self->{link} = $link;
+    # finally got a valid link
+    $self->{link} = \@fields;
     $self->{meta}->{COUNT}++;
 
     if ( defined $self->{expected_examples} ) { # examples may contain prefix
-        my @idforms = $link->[0];
+        my @idforms = $fields[0];
         my $prefix = $self->{meta}->{PREFIX};
-        push @idforms, $prefix . $link->[0] if defined $prefix;
+        push @idforms, $prefix . $fields[0] if defined $prefix;
         foreach my $source (@idforms) {
             if ( $self->{expected_examples}->{$source} ) {
                 delete $self->{expected_examples}->{$source};
@@ -591,12 +567,12 @@ sub appendlink {
 
     if ( $self->{link_handler} ) {
         if ( $self->{link_handler} eq 'print' ) {
-            print plainbeaconlink( $self->link ) . "\n";
+            print plainbeaconlink( @fields ) . "\n";
          } elsif ( $self->{link_handler} eq 'expand' ) { 
             print join('|',$self->expanded) . "\n"; 
          } else {
             # TODO: call with expanded link on request
-            eval { $self->{link_handler}->( $self->link ); };
+            eval { $self->{link_handler}->( @fields ); };
             if ( $@ ) {
                 $self->_handle_error( "link handler died: $@" );
                 return;
@@ -604,7 +580,7 @@ sub appendlink {
         }
     }
 
-    return $self->link;
+    return @fields; # TODO: expanded?
 }
 
 =head1 FUNCTIONS
@@ -833,7 +809,57 @@ sub _readline {
     }
 }
 
-=head1 _expandlink ( $link }
+=head2 _fields
+
+Gets one or more fields, that are strings, which do not contain C<|> or
+newlines. The first string is not empty. Returns a reference to an array
+of four fields.
+
+=cut
+
+sub _fields {
+    my $self = shift;
+    my @parts = @_;
+
+    my $n = scalar @parts;
+
+    my $link = [shift @parts,"","",""];
+
+    my $target = $self->{meta}->{TARGET};
+    my $targetprefix = $self->{meta}->{TARGETPREFIX};
+    if ($target or $targetprefix) {
+        $link->[1] = shift @parts if @parts;
+        $link->[2] = shift @parts if @parts;
+        # TODO: do we want both #TARGET links and explicit links in one file?
+        $link->[3] = shift @parts if @parts;
+    } else {
+        $link->[3] = pop @parts
+            if ($n > 1 && _is_uri($parts[$n-2]));
+        $link->[1] = shift @parts if @parts;
+        $link->[2] = shift @parts if @parts;
+    }
+
+     return $link
+}
+
+sub _checklink {
+    my ($self, @fields) = @_;
+
+    my @exp = @fields;
+    # TODO: check only - we don't need full expansion
+    $self->_expandlink( \@exp );
+
+    return "source is no URI: ".$exp[0]
+        unless _is_uri($exp[0]);
+
+    # TODO: we could encode bad characters etc.
+    return "target is no URI: ".$exp[3]
+        unless _is_uri($exp[3]);
+
+    return undef;
+}
+
+=head1 _expandlink ( $link )
 
 Expand a link, provided as array reference without validation. The link
 must have four defined, trimmed fields. After expansion, source and target
@@ -895,7 +921,6 @@ sub _expandlink {
     } elsif( defined $targetprefix ) {
         $link->[3] = $targetprefix . $link->[3];
     }
-
 
     return @$link;
 }

@@ -86,9 +86,12 @@ is ( $b->meta('target'), 'u:ri:{ID}' );
 $b = beacon( { TARGETPREFIX => 'http://foo.org/' } );
 ok( !$b->lasterror );
 my @l = $b->appendlink("f:rom","","","x");
-# TODO: test via $b->expandlink( )
 is_deeply( \@l, ['f:rom','','','x'], 'targetprefix' );
 is_deeply( [ $b->expanded ], ['f:rom','','','http://foo.org/x'], 'targetprefix' );
+
+@l = $b->expandlink("f:rom","","","x");
+is_deeply( \@l, ['f:rom','','','http://foo.org/x'], 'expandlink' );
+is( $b->count, 1 );
 
 eval { $b = beacon( { TARGET => 'u:ri', TARGETPREFIX => 'http://foo.org/' } ); };
 ok( $@, 'TARGET and TARGETPREFIX cannot be set both' );
@@ -103,10 +106,11 @@ $b = beacon( errors => sub { $haserror = 1; } );
 $b->meta('PREFIX','x:');
 $b->meta('TARGETPREFIX','y:');
 ok( $b->appendlink('0','','','0'), 'zero is valid source' );
-ok( !$b->errorcount && !$haserror, 'error handler' );
+ok( !$b->errorcount && !$haserror, 'error handler not called' );
 
 $b = beacon( $expected, errors => sub { $haserror = 1; } ); 
 ok( !$b->errorcount && !$haserror, 'error handler' );
+
 $b->appendlink('0');
 ok( $b->errorcount && $haserror, 'error handler' );
 
@@ -137,8 +141,7 @@ my %t;
   "qid|lab|u:ri" => ["qid","lab","","u:ri"],
   " \t" => [],
   "" => [],
-  "qid|lab|dsc|u:ri|foo" 
-      => "found too many parts (>4), divided by '|' characters",
+  "qid|lab|dsc|u:ri|foo" => ["qid","lab","dsc","u:ri"]
   "|qid|u:ri" => [],
   "qid|lab|dsc|abc" => "URI part has not valid URI form: abc",
 );
@@ -174,6 +177,17 @@ while (my ($line, $link) = each(%t)) {
     is_deeply( \@l2, $link, 'appendlink, list' );
 }
 
+# with prefix only
+$b = beacon({PREFIX=>'x:'});
+%t = ( 
+  'a|b|http://example.com/bar' => ['x:a','b','','http://example.com/bar'],
+  "a|b|http://example.com/bar\n" => ['x:a','b','','http://example.com/bar']  
+);
+while (my ($line, $link) = each(%t)) {
+    ok( $b->appendline($line) );
+    is_deeply( [ $b->expanded ], $link, "expanded with PREFIX: $line" );
+}
+
 
 # file parsing
 $b = beacon( "t/beacon1.txt" );
@@ -186,12 +200,10 @@ is_deeply( { $b->meta() }, {
 
 is( $b->line, 6, 'line()' );
 $b->parse();
-is( $b->lasterror, "found too many parts (>4), divided by '|' characters" );
-is( $b->errorcount, 1 );
-is( $b->count, 6 );
+is( $b->errorcount, 0 );
+is( $b->count, 7 );
 
 eval { $b = beacon( errors => 'xxx' ); }; ok( $@, 'error handler' );
-is( $b->errorcount, 1 );
 
 $b->parse("~");
 is( $b->errorcount, 1 );
@@ -205,10 +217,10 @@ is_deeply( \@es, [ 'Failed to open ~', 0, '' ], 'lasterror, list context' );
 $b->parse( { } );
 is( $b->errorcount, 1, 'cannot parse a hashref' );
 
-
 # string parsing
 $b->parse( \"x:from|x:to\n\n|comment" );
 is( $b->count, 1, 'parse from string' );
+
 is( $b->line, 3, '' );
 is_deeply( [$b->link], ['x:from','','','x:to'] );
 is_deeply( [$b->expanded], ['x:from','','','x:to'] );
