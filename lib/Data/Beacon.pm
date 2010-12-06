@@ -14,7 +14,7 @@ use Scalar::Util qw(blessed);
 use URI::Escape;
 use Carp;
 
-our $VERSION = '0.2.5';
+our $VERSION = '0.2.6';
 
 use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
@@ -95,7 +95,7 @@ You can parse BEACON format either as iterator:
 
   my $beacon = beacon( $file );
   while ( $beacon->nextlink ) {
-      my ($source, $label, $description, $target, $sourceuri, $targeturi) = $beacon->link;
+      my ($source, $label, $description, $target) = $beacon->link;
       ...
   }
 
@@ -172,7 +172,11 @@ sub meta { # TODO: document meta fields
             unless $key =~ /^\s*([a-zA-Z_-]+)\s*$/; 
         my $value = $list{$key};
         $key = uc($1);
-        $value =~ s/^\s+|\s+$|\n//g;
+        if ( defined $value ) {
+            $value =~ s/^\s+|\s+$|\n//g;
+        } else {
+            $value = '';
+        }
         if ($value eq '') { # empty field: unset
             croak 'You cannot unset meta field #FORMAT' if $key eq 'FORMAT';
             delete $self->{meta}->{$key};
@@ -448,28 +452,36 @@ sub link {
 
 Returns the last valid link, that has been read in expanded form. The 
 link is returned as list of four values (source, label, description, 
-target), possibly expanded by the meta fields PREFIX, TARGET/TARGETPREFIX.
+target), possibly expanded by the meta fields PREFIX, TARGET/TARGETPREFIX,
+MESSAGE etc. Use L</expand> to expand an arbitrary link.
 
 =cut
 
 sub expanded {
     my $self = shift;
     if ( $self->{link} ) {
-        $self->_expandlink( $self->{link} );
-        return @{$self->{link}};
+        unless ( $self->{expanded} ) {
+            @{$self->{expanded}} = @{$self->{link}};
+            $self->_expandlink( $self->{expanded} ) 
+        }
+        return @{$self->{expanded}};
     }
 }
 
-=head2 expandlink ( $source, $label, $description, $target )
+=head2 expand ( $source, $label, $description, $target )
 
 Expand a link, consisting of source (mandatory), and label, description,
 and target (all optional). Returns the expanded link as array with four 
 values, or an empty list. This method does append the link to the Beacon
 object, nor call any handlers.
 
+=head2 expandlink ( $source, $label, $description, $target )
+
+Alias for expand.
+
 =cut
 
-sub expandlink {
+sub expand {
     my $self = shift;
 
     my @fields = @_ > 0 ? @_ : '';
@@ -483,6 +495,28 @@ sub expandlink {
     return unless _is_uri($fields[0]) && _is_uri($fields[3]);
 
     return @fields;
+}
+
+*expandlink = *expand;
+
+=head2 expandsource( $source )
+
+Expand the source part of a link, by prepending the PREFIX meta field, if 
+given. This method always returns a string, which is the empty string, if
+the source parameter could not be expanded to a valid URI.
+
+=cut
+
+sub expandsource {
+    my ($self, $source) = @_;
+    return '' unless defined $source;
+    $source =~ s/^\s+|\s+$//g;
+    return '' if $source eq '';
+
+    $source = $self->{meta}->{PREFIX} . $source
+        if defined $self->{meta}->{PREFIX};
+
+    return _is_uri($source) ? $source : ''; 
 }
 
 =head2 appendline( $line )
@@ -550,6 +584,7 @@ sub appendlink {
 
     # finally got a valid link
     $self->{link} = \@fields;
+    $self->{expanded} = undef;
     $self->{meta}->{COUNT}++;
 
     if ( defined $self->{expected_examples} ) { # examples may contain prefix
@@ -580,7 +615,7 @@ sub appendlink {
         }
     }
 
-    return @fields; # TODO: expanded?
+    return @fields; # TODO: return expanded on request
 }
 
 =head1 FUNCTIONS
@@ -712,6 +747,7 @@ sub _startparsing {
     $self->meta( %{ $self->{pre} } ) if $self->{pre};
     $self->{line} = 0;
     $self->{link} = undef;
+    $self->{expanded} = undef;
     $self->{errorcount} = 0;
     $self->{lasterror} = [];
     $self->{lookaheadline} = undef;

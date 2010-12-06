@@ -42,10 +42,20 @@ foreach my $bad (@badmeta) {
 }
 is( $b->errorcount, 0, 'croaking errors are not counted' );
 
-$b->meta( 'prefix' => 'http://foo.bar' );
-is_deeply( { $b->meta() }, { 'FORMAT' => 'BEACON', 'PREFIX' => 'http://foo.bar' } );
+$b->meta( 'prefix' => 'http://foo.org/' );
+is_deeply( { $b->meta() }, { 'FORMAT' => 'BEACON', 'PREFIX' => 'http://foo.org/' } );
 $b->meta( 'prefix' => 'u:' ); # URI prefix
 $b->meta( 'prefix' => '' );
+
+# expandsource
+$b = beacon({PREFIX => 'http://foo.org/'});
+is( $b->expandsource( 0 ), 'http://foo.org/0', 'expandsource' );
+is( $b->expandsource( '' ), '', 'expandsource' );
+is( $b->expandsource( undef ), '', 'expandsource' );
+is( beacon()->expandsource( 'x' ), '', 'expandsource' );
+is( beacon()->expandsource( 'id:0' ), 'id:0', 'expandsource' );
+is( beacon()->expandsource( undef ), '', 'expandsource' );
+$b->meta('prefix' => undef);
 
 eval { $b->meta( 'revisit' => 'Sun 3rd Nov, 1943' ); }; 
 ok( $@ , 'detect invalid REVISIT');
@@ -89,8 +99,8 @@ my @l = $b->appendlink("f:rom","","","x");
 is_deeply( \@l, ['f:rom','','','x'], 'targetprefix' );
 is_deeply( [ $b->expanded ], ['f:rom','','','http://foo.org/x'], 'targetprefix' );
 
-@l = $b->expandlink("f:rom","","","x");
-is_deeply( \@l, ['f:rom','','','http://foo.org/x'], 'expandlink' );
+@l = $b->expand("f:rom","","","x");
+is_deeply( \@l, ['f:rom','','','http://foo.org/x'], 'expand' );
 is( $b->count, 1 );
 
 eval { $b = beacon( { TARGET => 'u:ri', TARGETPREFIX => 'http://foo.org/' } ); };
@@ -159,9 +169,7 @@ print Dumper(\@l)."\n";
 $b = beacon({PREFIX=>'x:',TARGET=>'y:'});
 ok( $b->appendline( "0|z" ), 'appendline, scalar' );
 
-%t = (
-  "qid |u:ri" => ['qid','u:ri','',''] # TODO: add expansion here?
-);
+%t = ("qid |u:ri" => ['qid','u:ri','','']);
 while (my ($line, $link) = each(%t)) {
     ok( $b->appendline( $line ), 'appendline, scalar' );
 
@@ -185,9 +193,11 @@ $b = beacon({PREFIX=>'x:'});
 );
 while (my ($line, $link) = each(%t)) {
     ok( $b->appendline($line) );
+    $b->expanded; # multiple calls should not alter the link
     is_deeply( [ $b->expanded ], $link, "expanded with PREFIX: $line" );
 }
 
+exit;
 
 # file parsing
 $b = beacon( "t/beacon1.txt" );
