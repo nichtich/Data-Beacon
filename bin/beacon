@@ -70,7 +70,7 @@ if ( $dbi ) {
     $opt{password} = $password if defined $password;
     $opt{error} = \&failed unless $quiet;
     $collection = Data::Beacon::Collection->new( %opt );
-    failed( $collection->lasterror ) if $collection->errorcount;
+    failed( $collection->lasterror ) if $collection->errors;
 }
 
 # additional sophisticated command line parsing follows
@@ -114,7 +114,7 @@ unless ($cmd) {
 # parse the metafile first
 if (defined $premeta) {
     my $m = beacon($premeta);
-    failed( $m->lasterror ) if $m->errorcount;
+    failed( $m->lasterror ) if $m->errors;
     $handlers{pre}= { $m->meta() };
 }
 
@@ -189,7 +189,7 @@ if ( $collection ) {
 # Now finally do something
 
 if ( $cmd eq 'parse' ) { # parse a file
-    if ( !$beaconfile->errorcount ) { # unless file not found
+    if ( !$beaconfile->errors ) { # unless file not found
         $beaconfile->parse();
         print $beaconfile->metafields();
     }

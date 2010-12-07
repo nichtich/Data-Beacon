@@ -115,13 +115,13 @@ is derived L<from Data::Beacon|Data::Beacon/lasterror>.
 
 =cut
 
-=head2 errorcount
+=head2 errors
 
 Returns the current number of errors or zero.
 
 =cut
 
-sub errorcount {
+sub errors {
     my $self = shift;
 
     # ...
@@ -240,7 +240,7 @@ sub _init {
         unless UNIVERSAL::isa( $collection, 'Data::Beacon::Collection::DBI' );
     # TODO: croak on more errors
 
-    $self->{errorcount} = 0;
+    $self->{errors} = 0;
     $self->{lasterror} = [];
     $self->{name} = $name;
     $self->{collection} = $collection;

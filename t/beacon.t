@@ -13,7 +13,7 @@ isa_ok($b,'Data::Beacon');
 
 $b = beacon();
 isa_ok($b,'Data::Beacon');
-is( $b->errorcount, 0 );
+is( $b->errors, 0 );
 
 # meta fields
 my %m = $b->meta();
@@ -37,10 +37,10 @@ foreach my $bad (@badmeta) {
     if (@$bad == 2 && $bad->[0] ne ' ') {
         my $line = '#' . join(': ',@$bad) . "\n";
         my $c = beacon( \$line );
-        is( $c->errorcount, 1, 'bad meta field' );
+        is( $c->errors, 1, 'bad meta field' );
     }
 }
-is( $b->errorcount, 0, 'croaking errors are not counted' );
+is( $b->errors, 0, 'croaking errors are not counted' );
 
 $b->meta( 'prefix' => 'http://foo.org/' );
 is_deeply( { $b->meta() }, { 'FORMAT' => 'BEACON', 'PREFIX' => 'http://foo.org/' } );
@@ -108,7 +108,7 @@ ok( $@, 'TARGET and TARGETPREFIX cannot be set both' );
 
 $b = beacon( $expected );
 is_deeply( { $b->meta() }, $expected );
-is( $b->errorcount, 0 );
+is( $b->errors, 0 );
 
 my $haserror;
 
@@ -116,13 +116,13 @@ $b = beacon( errors => sub { $haserror = 1; } );
 $b->meta('PREFIX','x:');
 $b->meta('TARGETPREFIX','y:');
 ok( $b->appendlink('0','','','0'), 'zero is valid source' );
-ok( !$b->errorcount && !$haserror, 'error handler not called' );
+ok( !$b->errors && !$haserror, 'error handler not called' );
 
 $b = beacon( $expected, errors => sub { $haserror = 1; } ); 
-ok( !$b->errorcount && !$haserror, 'error handler' );
+ok( !$b->errors && !$haserror, 'error handler' );
 
 $b->appendlink('0');
-ok( $b->errorcount && $haserror, 'error handler' );
+ok( $b->errors && $haserror, 'error handler' );
 
 $b = beacon();
 $b->meta( 'feed' => 'http://example.com', 'target' => 'http://example.com/{ID}' );
@@ -194,12 +194,17 @@ $b = beacon({PREFIX=>'x:'});
 while (my ($line, $link) = each(%t)) {
     ok( $b->appendline($line) );
     $b->expanded; # multiple calls should not alter the link
+    $line =~ s/\n//;
     is_deeply( [ $b->expanded ], $link, "expanded with PREFIX: $line" );
 }
 
-exit;
-
 # file parsing
+$b = beacon("~");
+is( $b->errors, 1, 'failed to open file' );
+
+$b = beacon( undef );
+is( $b->errors, 0, 'no file specified' );
+
 $b = beacon( "t/beacon1.txt" );
 is_deeply( { $b->meta() }, {
   'FORMAT' => 'BEACON',
@@ -210,13 +215,13 @@ is_deeply( { $b->meta() }, {
 
 is( $b->line, 6, 'line()' );
 $b->parse();
-is( $b->errorcount, 0 );
+is( $b->errors, 0 );
 is( $b->count, 7 );
 
 eval { $b = beacon( errors => 'xxx' ); }; ok( $@, 'error handler' );
 
 $b->parse("~");
-is( $b->errorcount, 1 );
+is( $b->errors, 1 );
 
 my $e = $b->lasterror;
 is( $e, 'Failed to open ~', 'lasterror, scalar context' );
@@ -225,7 +230,7 @@ my @es = $b->lasterror;
 is_deeply( \@es, [ 'Failed to open ~', 0, '' ], 'lasterror, list context' );
 
 $b->parse( { } );
-is( $b->errorcount, 1, 'cannot parse a hashref' );
+is( $b->errors, 1, 'cannot parse a hashref' );
 
 # string parsing
 $b->parse( \"x:from|x:to\n\n|comment" );
@@ -237,7 +242,7 @@ is_deeply( [$b->expanded], ['x:from','','','x:to'] );
 
 $b->parse( \"\xEF\xBB\xBFx:from|x:to", links => sub { @l = @_; } );
 is( $b->line, 1 );
-is( $b->errorcount, 0 );
+is( $b->errors, 0 );
 is_deeply( \@l, [ 'x:from', '', '', 'x:to' ], 'BOM' );
 
 
@@ -249,7 +254,7 @@ is( $b->metafields, "#FORMAT: BEACON\n#BAZ: doz\n#FOO: bar\n#COUNT: 0\n" );
 is( $b->link, undef, 'no links' );
 
 $b->parse( from => sub { die 'hard'; } );
-is( $b->errorcount, 1 );
+is( $b->errors, 1 );
 ok( $b->lasterror =~ /^hard/, 'dead input will not kill us' );
 
 $b = beacon( \"#COUNT: 2\nf:rom|t:o" );
@@ -290,7 +295,7 @@ is_deeply( [$b->nextlink], ["id:1","","","t:1"] );
 is_deeply( [$b->nextlink], ["id:2","","","t:2"] );
 is_deeply( [$b->link], ["id:2","","","t:2"] );
 ok( !$b->nextlink );
-is( $b->errorcount, 1 );
+is( $b->errors, 1 );
 is_deeply( [ $b->lasterror ], [ 'source is no URI: a b',2,'a b|' ] );
 
 use Data::Validate::URI qw(is_uri);

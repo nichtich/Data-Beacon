@@ -19,50 +19,68 @@ our $VERSION = '0.2.6';
 use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
 
+=head1 DESCRIPTION
+
+This package implements a validating L</BEACON format> parser and serializer.
+In short, a "Beacon" is a set of links, together with some meta fields. Each 
+link at least consists of "source" URI (also referred to as "id") and a "target"
+URI. In addition it has a "label" and a "description", which are both Unicode
+strings, being the empty string by default.
+
 =head1 SYNOPSIS
 
   use Data::Beacon;
 
-  $beacon = new SeeAlso::Beacon( $beaconfile );
-  $beacon = beacon( $beaconfile ); # equivalent
+  $beacon = beacon();                     # create new Beacon object
+  $beacon = beacon( {                     # create new Beacon with meta fields
+    PREFIX => $p, TARGET => $t, XY => $z
+  } );
+  
+  $beacon = beacon( $filename );          # open file and parse its meta fields
 
-  $beacon = beacon( { FOO => "bar" } ); # empty Beacon with meta fields
+  if ( $b->errors ) {                     # check for errors
+    print STDERR $b->lasterror . "\n"
+    ($msg,$lineno,$line) = $b->lasterror; 
+  }
 
-  $beacon->meta();                                   # get all meta fields
-  $beacon->meta( 'DESCRIPTION' => 'my best links' ); # set meta fields
-  $d = $beacon->meta( 'DESCRIPTION' );               # get meta field
-  $beacon->meta( 'DESCRIPTION' => '' );              # unset meta field
-  print $beacon->metafields();
+  $beacon->parse;                         # parse all links from opened file
+  $beacon->parse( links => \&handler );   # parse links, call handler for each
+  $beacon->parse( error => \&handler );   # parse links, on error call handler
+  $beacon->parse( error => 'print' );     # parse links, print errors to STDERR
 
-  $beacon->parse(); # proceed parsing links
+  while ( $beacon->nextlink ) {            # parse and iterate all valid links
+    ($source,$label,$descr,$target) = $beacon->link;      # raw link as read
+    ($source,$label,$descr,$target) = $beacon->expanded;  # full link expanded
+  }
 
-  $beacon->parse( error => 'print' );          # print errors to STDERR
-  $beacon->parse( error => \&error_handler );
+  $descr = $beacon->meta( 'DESCRIPTION' );      # get meta field
+  $beacon->meta( DESCRIPTION => 'my links' );   # set meta fields
+  %meta = $beacon->meta;                        # get all meta fields
 
-  $beacon->parse( $beaconfile );
-  $beacon->parse( \$beaconstring );
-  $beacon->parse( sub { return $nextline } );
+  print $beacon->metafields;                    # serialize meta fields
 
-  $beacon->count();      # number of parsed links
-  $beacon->errorcount(); # number of parsing errors
 
-=head1 DESCRIPTION
+  $beacon->parse( \$beaconstring );             # parse from string
+  $beacon->parse( sub { return $nextline } );   # parse from callback
 
-This package implements a parser and serializer for BEACON format with
-dedicated error handling. A B<Beacon>, as implemente by C<Data::Beacon>
-is I<a set of links> together with some I<meta fields> that describe it.
-Each link consists of four values I<source> (also refered to as I<id>),
-I<label>, I<description>, and I<target>, where source and target are
-mandatory URIs, and label and description are strings, being the empty 
-string by default.
+  $beacon->count;        # number of parsed links
 
-B<BEACON format> is the serialization format for Beacons. It defines a
-very condense syntax to express links without having to deal much with
-technical specifications.
+  
+  $beacon->appendline( $line );
 
-See L<http://meta.wikimedia.org/wiki/BEACON> for a more detailed  description.
+  $beacon->appendlink( $source, $label, $descr, $target );
 
-=head2 SERIALIZING
+=head1 BEACON format
+
+B<BEACON format> is the serialization format for Beacons. It defines a very
+condense syntax to express links without having to deal much with technical 
+specifications.
+
+See L<http://meta.wikimedia.org/wiki/BEACON> for a more detailed description.
+
+=head1 USAGE
+
+=head2 Serializing
 
 To serialize only BEACON meta fields, create a new Beacon object, and set its
 meta fields (passed to the constructor, or with L</meta>). You can then get 
@@ -89,7 +107,7 @@ should validate links before printing:
       print plainbeaconlink( $beacon->link ) . "\n";
   }
 
-=head2 PARSING
+=head2 Parsing
 
 You can parse BEACON format either as iterator:
 
@@ -103,7 +121,7 @@ Or by push parsing with handler callbacks:
 
   my $beacon = beacon( $file );
   $beacon->parse( 'link' => \link_handler );
-  $errors = $beacon->errorcount;
+  $errors = $beacon->errors;
 
 
 Instead of a filename, you can also provide a scalar reference, to parse
@@ -111,16 +129,17 @@ from a string. The meta fields are parsed immediately:
 
   my $beacon = beacon( $file );
   print $beacon->metafields . "\n";
-  my $errors = $beacon->errorcount;
+  my $errors = $beacon->errors;
 
 To quickly parse a BEACON file:
 
   use Data::Beacon;
   beacon($file)->parse();
 
-=head2 QUERYING
+=head2 Querying
 
-
+Data::Beacon does only read or write links. To store links, use one of
+its subclasses (to be described later).
 
 =head1 METHODS
 
@@ -279,14 +298,14 @@ sub lasterror {
     return wantarray ? @{$_[0]->{lasterror}} : $_[0]->{lasterror}->[0];  
 }
 
-=head2 errorcount
+=head2 errors
 
 Returns the number of parsing errors or zero.
 
 =cut
 
-sub errorcount {
-    return $_[0]->{errorcount};
+sub errors {
+    return $_[0]->{errors};
 }
 
 =head2 metafields 
@@ -337,7 +356,7 @@ as last modification time of the given file.
 
 By default, all errors are silently ignored, unless you specifiy an C<error>
 handler. The last error can be retrieved with the C<lasterror> method and the
-number of errors by C<errorcount>. Returns true only if C<errorcount> is zero 
+number of errors by C<errors>. Returns true only if C<errors> is zero 
 after parsing. Note that some errors may be less important.
 
 Finally, the C<link> handler can be a code reference to a method that is
@@ -404,7 +423,7 @@ sub parse {
         }
     }
 
-    return $self->errorcount == 0;
+    return $self->errors == 0;
 }
 
 =head2 nextlink
@@ -475,10 +494,6 @@ and target (all optional). Returns the expanded link as array with four
 values, or an empty list. This method does append the link to the Beacon
 object, nor call any handlers.
 
-=head2 expandlink ( $source, $label, $description, $target )
-
-Alias for expand.
-
 =cut
 
 sub expand {
@@ -496,8 +511,6 @@ sub expand {
 
     return @fields;
 }
-
-*expandlink = *expand;
 
 =head2 expandsource( $source )
 
@@ -640,6 +653,8 @@ function does not check whether the arguments form a valid link or not.
 You can pass a simple link, as returned by the L</link> method, or an
 expanded link, as returned by L</expanded>.
 
+This function will be removed or renamed.
+
 =cut
 
 sub plainbeaconlink {
@@ -748,7 +763,7 @@ sub _startparsing {
     $self->{line} = 0;
     $self->{link} = undef;
     $self->{expanded} = undef;
-    $self->{errorcount} = 0;
+    $self->{errors} = 0;
     $self->{lasterror} = [];
     $self->{lookaheadline} = undef;
     $self->{fh} = undef;
@@ -819,7 +834,7 @@ sub _handle_error {
     my $line = shift || $self->{currentline} || '';
     chomp $line;
     $self->{lasterror} = [ $msg, $self->{line}, $line ];
-    $self->{errorcount}++;
+    $self->{errors}++;
     $self->{error_handler}->( $msg, $self->{line}, $line ) if $self->{error_handler};
 }
 
@@ -895,7 +910,7 @@ sub _checklink {
     return undef;
 }
 
-=head1 _expandlink ( $link )
+=head2 _expandlink ( $link )
 
 Expand a link, provided as array reference without validation. The link
 must have four defined, trimmed fields. After expansion, source and target

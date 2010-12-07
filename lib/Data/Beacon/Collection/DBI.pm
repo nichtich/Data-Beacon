@@ -34,7 +34,7 @@ sub new {
     my $self = bless { }, $class;
 
     $self->_init( @_ );
-    croak $self->lasterror if $self->errorcount;
+    croak $self->lasterror if $self->errors;
 
     return $self;
 }
@@ -185,14 +185,14 @@ sub lasterror {
     return $_[0]->{lasterror}->[0];
 }
 
-=head2 errorcount
+=head2 errors
 
 Returns the number of errors or zero.
 
 =cut
 
-sub errorcount {
-    return $_[0]->{errorcount};
+sub errors {
+    return $_[0]->{errors};
 }
 
 =head2 _handle_error ( $msg )
@@ -205,7 +205,7 @@ increases the error counter and stores the last error.
 sub _handle_error {
     my $self = shift;
     $self->{lasterror} = [ @_ ];
-    $self->{errorcount}++;
+    $self->{errors}++;
     $self->{error_handler}->( @_ ) if $self->{error_handler};
 }
 
@@ -215,7 +215,7 @@ sub _init {
     my (%param) = @_;
 
     $self->{lasterror} = [];
-    $self->{errorcount} = 0;
+    $self->{errors} = 0;
     $self->{error_handler} = undef;
 
     my $dsn = $param{dbi};
