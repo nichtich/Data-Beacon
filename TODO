@@ -1,3 +1,5 @@
+By default, print errors
+
 Easier serialization of BEACON format
   beacon(">$file") 
   beacon( to => $file )

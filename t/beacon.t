@@ -218,8 +218,6 @@ $b->parse();
 is( $b->errors, 0 );
 is( $b->count, 7 );
 
-eval { $b = beacon( errors => 'xxx' ); }; ok( $@, 'error handler' );
-
 $b->parse("~");
 is( $b->errors, 1 );
 

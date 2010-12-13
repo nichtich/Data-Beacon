@@ -45,8 +45,11 @@ strings, being the empty string by default.
 
   $beacon->parse;                         # parse all links from opened file
   $beacon->parse( links => \&handler );   # parse links, call handler for each
-  $beacon->parse( error => \&handler );   # parse links, on error call handler
-  $beacon->parse( error => 'print' );     # parse links, print errors to STDERR
+
+  $beacon->parse( errors => \&handler );  # parse links, on error call handler
+  $beacon->parse( errors => 'print' );    # parse links, print errors to STDERR
+  $beacon->parse( errors => 'warn' );     # parse links, warn on errors
+  $beacon->parse( errors => 'die' );      # parse links, die on errors
 
   while ( $beacon->nextlink ) {            # parse and iterate all valid links
     ($source,$label,$descr,$target) = $beacon->link;      # raw link as read
@@ -91,9 +94,8 @@ the meta fields in BEACON format with L</metafields>:
 
 The easiest way to serialize links in BEACON format, is to set your Beacon 
 object's link handler to C<print>, so each link is directly printed to STDOUT.
-By setting the error handler also to C<print>, errors are printed to STDERR.
 
-  my $beacon = beacon( \%metafields, errors => 'print', links => 'print' );
+  my $beacon = beacon( \%metafields, links => 'print' );
   print $b->metafields();
 
   while ( ... ) {
@@ -141,15 +143,39 @@ To quickly parse a BEACON file:
 Data::Beacon does only read or write links. To store links, use one of
 its subclasses (to be described later).
 
+=head2 Handlers
+
+To handle errors and links, you can pass handler arguments to the constructor
+and to the L</parse> method.
+
+=over
+
+=item C<errors>
+
+By default, errors are silently ignored (C<errors =E<gt> 0>. You should enable
+one of the error handlers C<warn> (errors create a warning with C<carp>), 
+C<die> (errors will let the program die with C<croak>), or C<print> (error 
+messages will be print to STDERR). Alternatively you can provide a custom error
+handler function as code reference. On error this function is provided one to
+three arguments: first an error message, second a line number, and third the
+content of the current line, if the error resulted in parsing a line of BEACON
+format.
+
+=item C<links>
+
+See the L</parse> method for description.
+
+=back
+
 =head1 METHODS
 
-=head2 new ( [ $from ] { handler => coderef } | $metafields )
+=head2 new ( [ $from ] [, $metafields ] [, $handlers ] )
 
 Create a new Beacon object, optionally from a given file. If you specify a 
-source via C<$from> argument or as parameter C<from =E<gt> $from>, it will
-be opened for parsing and all meta fields will immediately be read from it.
-Otherwise you get an empty, but initialized Beacon object. See the C<parse>
-methods for more details about possible handlers as parameters.
+source via C<$from> argument or as handler C<from =E<gt> $from>, it will be
+opened for parsing and all meta fields will immediately be read from it.
+Otherwise a new Beacon object will be created, optionally with given meta
+fields.
 
 =cut
 
@@ -354,10 +380,9 @@ These fields are cached and reused every time you call C<parse>.
 If the C<mtime> option is given, the TIMESTAMP meta value will be initialized
 as last modification time of the given file.
 
-By default, all errors are silently ignored, unless you specifiy an C<error>
-handler. The last error can be retrieved with the C<lasterror> method and the
-number of errors by C<errors>. Returns true only if C<errors> is zero 
-after parsing. Note that some errors may be less important.
+By default, all errors are silently ignored, unless you specifiy an error handler
+The last error can be retrieved with the C<lasterror> method. The current number
+of errors by C<errors>.
 
 Finally, the C<link> handler can be a code reference to a method that is
 called for each link (that is each line in the input that contains a valid
@@ -712,15 +737,15 @@ sub _initparams {
 
     if ( $param{errors} ) {
         my $handler = $param{errors};
-        if ( $handler eq 'print' ) {
-           $handler = sub {
-              my ($msg, $lineno) = @_;
-              $msg .= " at line $lineno" if defined $lineno;
-              print STDERR "$msg\n";
-           };
+        $handler = $Data::Beacon::ERROR_HANDLERS{lc($handler)}
+	    unless ref($handler);
+        unless ( ref($handler) and ref($handler) eq 'CODE' ) {
+            my $msg = 'error handler must be code or ' 
+                    . join('/',keys %Data::Beacon::ERROR_HANDLERS)
+                    . ', got '
+                    . (defined $handler ? $handler : 'undef');
+            croak $msg;
         }
-        croak 'error handler must be code, found:'
-            unless ref($handler) and ref($handler) eq 'CODE';
         $self->{error_handler} = $handler;
     }
 
@@ -837,6 +862,24 @@ sub _handle_error {
     $self->{errors}++;
     $self->{error_handler}->( $msg, $self->{line}, $line ) if $self->{error_handler};
 }
+
+our %ERROR_HANDLERS = (
+    'print' => sub {
+        my ($msg, $lineno) = @_;
+        $msg .= " at line $lineno" if $lineno ;
+        print STDERR "$msg\n";
+    },
+    'warn' => sub {
+        my ($msg, $lineno) = @_;
+        $msg .= " at line $lineno" if $lineno;
+        carp $msg;
+    },
+    'die' => sub {
+        my ($msg, $lineno) = @_;
+        $msg .= " at line $lineno" if $lineno;
+        croak $msg;
+    }
+);
 
 =head2 _readline
 
