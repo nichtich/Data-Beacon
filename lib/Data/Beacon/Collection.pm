@@ -1,19 +1,11 @@
-package Data::Beacon::Collection;
-
 use strict;
 use warnings;
-
-=head1 NAME
-
-Data::Beacon::Collection - Abstract collection of named BEACON link sets.
-
-=cut
+package Data::Beacon::Collection;
+#ABSTRACT: Abstract collection of named BEACON link sets
 
 use Data::Beacon;
 use Data::Beacon::Collection::DBI;
 use Carp;
-
-our $VERSION = '0.0.1';
 
 =head1 DESCRIPTION
 
@@ -91,21 +83,3 @@ sub list {
 }
 
 1;
-
-__END__
-
-=head1 AUTHOR
-
-Jakob Voss C<< <jakob.voss@gbv.de> >>
-
-=head1 LICENSE
-
-Copyright (C) 2010 by Verbundzentrale Goettingen (VZG) and Jakob Voss
-
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
-
-In addition you may fork this library under the terms of the 
-GNU Affero General Public License.
-

@@ -296,8 +296,6 @@ ok( !$b->nextlink );
 is( $b->errors, 1 );
 is_deeply( [ $b->lasterror ], [ 'source is no URI: a b',2,'a b|' ] );
 
-use Data::Validate::URI qw(is_uri);
-
 # check method 'plainbeaconlink'
 my @p = ( 
     ["",""],

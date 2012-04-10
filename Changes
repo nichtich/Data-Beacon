@@ -2,6 +2,9 @@ Revision history for Perl package Data::Beacon
 ==============================================
 '*' indicates a revision also published at CPAN.
 
+0.2.7 2012-04-10*
+    - fixed testing bug at *BSD and migrated to dist::Zilla
+
 0.2.5 2010-12-03*
     - refactored
 

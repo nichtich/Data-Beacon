@@ -1,20 +1,12 @@
-package Data::Beacon;
-
 use strict;
 use warnings;
-
-=head1 NAME
-
-Data::Beacon - BEACON format validating parser and serializer
-
-=cut
+package Data::Beacon;
+#ABSTRACT: BEACON format validating parser and serializer
 
 use Time::Piece;
 use Scalar::Util qw(blessed);
 use URI::Escape;
 use Carp;
-
-our $VERSION = '0.2.6';
 
 use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
@@ -1065,8 +1057,6 @@ sub _is_uri {
 
 1;
 
-__END__
-
 =head1 DEVELOPMENT
 
 Please visit http://github.com/nichtich/p5-data-beacon for the latest
@@ -1077,17 +1067,4 @@ development snapshot, bug reports, feature requests, and such.
 See also L<SeeAlso::Server> for an API to exchange single sets of 
 beacon links, based on the same source identifier.
 
-=head1 AUTHOR
-
-Jakob Voss C<< <jakob.voss@gbv.de> >>
-
-=head1 LICENSE
-
-Copyright (C) 2010 by Verbundzentrale Goettingen (VZG) and Jakob Voss
-
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
-
-In addition you may fork this library under the terms of the 
-GNU Affero General Public License.
+=cut
