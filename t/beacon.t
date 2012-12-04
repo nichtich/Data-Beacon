@@ -3,10 +3,12 @@
 use strict;
 use warnings;
 
-use Test::More qw(no_plan);
+use Test::More;
 
 use_ok('Data::Beacon');
 
+done_testing;
+__END__
 my $r;
 my $b = new Data::Beacon();
 isa_ok($b,'Data::Beacon');
@@ -92,31 +94,16 @@ is( $b->line, 0, 'line()' );
 $b->meta( 'target' => 'u:ri:' );
 is ( $b->meta('target'), 'u:ri:{ID}' );
 
-# TARGETPREFIX
-$b = beacon( { TARGETPREFIX => 'http://foo.org/' } );
-ok( !$b->lasterror );
-my @l = $b->appendlink("f:rom","","","x");
-is_deeply( \@l, ['f:rom','','','x'], 'targetprefix' );
-is_deeply( [ $b->expanded ], ['f:rom','','','http://foo.org/x'], 'targetprefix' );
-
-@l = $b->expand("f:rom","","","x");
-is_deeply( \@l, ['f:rom','','','http://foo.org/x'], 'expand' );
-is( $b->count, 1 );
-
-eval { $b = beacon( { TARGET => 'u:ri', TARGETPREFIX => 'http://foo.org/' } ); };
-ok( $@, 'TARGET and TARGETPREFIX cannot be set both' );
-
 $b = beacon( $expected );
 is_deeply( { $b->meta() }, $expected );
 is( $b->errors, 0 );
 
-my $haserror;
+my ($haserror, @l);
 
 $b = beacon( errors => sub { $haserror = 1; } ); 
 $b->meta('PREFIX','x:');
-$b->meta('TARGETPREFIX','y:');
-ok( $b->appendlink('0','','','0'), 'zero is valid source' );
-ok( !$b->errors && !$haserror, 'error handler not called' );
+#ok( $b->appendlink('0','','','0'), 'zero is valid source' );
+#ok( !$b->errors && !$haserror, 'error handler not called' );
 
 $b = beacon( $expected, errors => sub { $haserror = 1; } ); 
 ok( !$b->errors && !$haserror, 'error handler' );
@@ -126,8 +113,6 @@ ok( $b->errors && $haserror, 'error handler' );
 
 $b = beacon();
 $b->meta( 'feed' => 'http://example.com', 'target' => 'http://example.com/{ID}' );
-$b->meta( 'target' => 'http://example.com/{LABEL}' );
-is( $b->meta('target'), 'http://example.com/{LABEL}' );
 
 $b = beacon();
 ok (! $b->appendline( undef ), 'undef line');
@@ -254,11 +239,6 @@ is( $b->link, undef, 'no links' );
 $b->parse( from => sub { die 'hard'; } );
 is( $b->errors, 1 );
 ok( $b->lasterror =~ /^hard/, 'dead input will not kill us' );
-
-$b = beacon( \"#COUNT: 2\nf:rom|t:o" );
-is( $b->count, 2 );
-ok( !$b->parse() );
-is( $b->lasterror, "expected 2 links, but got 1", "check expected link count" );
 
 # expected examples
 $b = beacon( \"#EXAMPLES: a:b|c:d\na:b|to:1\nc:d|to:2" );
@@ -413,3 +393,5 @@ is( $b->meta('prefix'), 'z:' );
 
 $b->parse( \"#PREFIX: z:", pre => undef );
 is( $b->meta('bar'), undef );
+
+done_testing;

@@ -8,18 +8,14 @@ Easier serialization of BEACON format
 
 Better document 'appendline/link'
 
-statt plainbeaconlink
+instead of plainbeaconlink
 
   $b->condense( @link ) # auch expanded!
   beacon->condense( @link )
 
 Document mixing of raw / expanded
 
-SQLite dependency
-
 document 'query'
 
-fully implement and test DBI
-
-basic RDF functionality
+add basic RDF functionality
 

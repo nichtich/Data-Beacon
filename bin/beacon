@@ -13,12 +13,11 @@ our $VERSION = '0.2.4';
 use Getopt::Long;
 use Pod::Usage;
 use Data::Beacon;
-use Data::Beacon::Collection;
 
 my ($configfile, $file, $name, $testmode, $linksmode, $premeta, $mtime, $dbi,
     $help, $man, $quiet, $verbose, $query, $user, $password);
 my %commands = map { $_ => 1 }
-    qw(dump expand about parse list init insert update upsert delete query queryexpand);
+    qw(dump expand about parse query queryexpand);
 
 GetOptions(
     "config:s" => \$configfile,
@@ -142,10 +141,7 @@ sub requirestore {
         unless $collection;
 }
 
-
-if ($cmd eq 'list' or $cmd eq 'init') {
-    requirestore();
-} elsif($cmd eq 'parse') {
+if( $cmd eq 'parse' ) {
     requirefile();
 } else {
     if ($cmd =~ /^((query)?expand|dump|about|query)$/) {
@@ -154,10 +150,6 @@ if ($cmd eq 'list' or $cmd eq 'init') {
             $query = shift @ARGV;
             failed("Please specifiy an id to query for!") unless defined $query;
         };
-    } else { # delete|insert|update|upsert : require collection and name
-        requirestore();
-        requirename();
-        requirefile() if $cmd =~ /^(insert|update)$/;
     }
 }
 
@@ -224,27 +216,7 @@ if ( $cmd eq 'parse' ) { # parse a file
             print plainbeaconlink(@link)."\n" if $link[0] eq $query;
         }
     }
-} elsif( $cmd eq 'list' ) {
-    info("Listing all collected Beacons:");
-    my @list = $collection->list();
-    print join("\n", @list). "\n" if @list;
-} elsif( $cmd eq 'insert' ) {
-    info("Inserting new Beacon $name");
-    failed("please use 'update' to replace existing Beacon $name")
-        if ( $collection->get( $name ) );
-    $collection->insert( $name, $beaconfile );
-} elsif( $cmd eq 'update' ) {
-    info("Updating Beacon $name");
-    failed("please use 'insert' to add non-existing Beacon $name")
-        if ( !$collection->get( $name ) );
-    $collection->insert( $name, $beaconfile );
-} elsif( $cmd eq 'delete' ) {
-    info("Deleting Beacon $name");
-    failed("could not remove Beacon $name")
-        unless $collection->remove( $name );
-}
-
-# TODO: implement command 'init' if needed
+} 
 
 sub info {
     print $_[0] . "\n" if $verbose;
@@ -285,15 +257,9 @@ beacon [ <options> ] {KEY=VALUE} [ <command> <name> ] [ <file> ]
   expand <name>  parse and expand a BEACON file or dump a stored Beacon
   query <name> <id> query a BEACON file or stored Beacon for an identifier
 
-  list                  list names of all Beacons in a collection
-  insert <name> <file>  insert a new beacon from file to a collection
-  update <name> <file>  replace a beacon from file to a collection
-  delete <name>         remove a beacon from a collection
-
 =head1 DESCRIPTION
 
-This command line script manages beacon files. You can use it for parsing,
-validating, expanding, and storing beacon files.
+This command line script can parse, test, and serialize BEACON files.
 
 =head2 COMMANDS
 
@@ -344,18 +310,6 @@ As C<about> is the default command, alternatively you can use one of:
   beacon myfile
   beacon -file myfile
   beacon -file myfile about
-
-To connect to a collection of Beacons, you can use the dbi option:
-
-  beacon -dbi SQLite:dbname=mydb.db
-  beacon -dbi mysql:database=mydb;mysql_read_default_file=.my.cnf
-
-It is recommended to put dbi, user, and password in a configuration
-file. You can then simply say:
-
-  beacon -c my.conf list
-  beacon -c my.conf about mybeacon
-  beacon -c my.conf query mybeacon someid
 
 To validate a BEACON file and show errors only:
 

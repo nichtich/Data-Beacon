@@ -4,8 +4,10 @@ Data::Beacon - BEACON format parser and serializer
 
 # DESCRIPTION
 
-This Perl 5 module provides a class to parse and serialize BEACON format.
-A command client script named `beacon` is also included.
+This Perl 5 module provides a class to parse and serialize BEACON link dump
+format. See <http://github.com/gbv/beaconspec> for a current specification
+
+The module includes a command line script named `beacon`.
 
 # INSTALLATION
 
@@ -17,6 +19,10 @@ To manually install from the sources, best use `cpanm`:
     $ cpanm Data::Beacon
 
 # BUGS
+
+The current version of this module does not fully reflect the BEACON
+specification. Please do not use it for serious applications unless
+BEACON has been finalized!
 
 Please report any bugs or feature requests to this project's GitHub
 repository at:

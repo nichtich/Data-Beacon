@@ -2,6 +2,9 @@ Revision history for Perl package Data::Beacon
 ==============================================
 '*' indicates a revision also published at CPAN.
 
+0.3.0 2012-12-04*
+    - removed BEACON collection handling
+
 0.2.7 2012-04-10*
     - fixed testing bug at *BSD and migrated to dist::Zilla
 

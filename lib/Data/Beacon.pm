@@ -13,6 +13,8 @@ our @EXPORT = qw(plainbeaconlink beacon);
 
 =head1 DESCRIPTION
 
+THIS MODULE DOES NOT REFLECT THE CURRENT STATE OF BEACON SPECIFICATION!
+
 This package implements a validating L</BEACON format> parser and serializer.
 In short, a "Beacon" is a set of links, together with some meta fields. Each 
 link at least consists of "source" URI (also referred to as "id") and a "target"
@@ -71,7 +73,8 @@ B<BEACON format> is the serialization format for Beacons. It defines a very
 condense syntax to express links without having to deal much with technical 
 specifications.
 
-See L<http://meta.wikimedia.org/wiki/BEACON> for a more detailed description.
+See L<http://gbv.github.com/beaconspec/beacon.html> for a more detailed
+description.
 
 =head1 USAGE
 
@@ -219,13 +222,11 @@ sub meta { # TODO: document meta fields
             delete $self->{meta}->{$key};
         } else { # check format of known meta fields
             if ($key eq 'TARGET') {
-                # TODO: transform deprecated $PND etc.?
                 $value =~ s/{id}/{ID}/g;
-                $value =~ s/{label}/{LABEL}/g;
                 # TODO: document that {ID} in target is optional (will be appended)
-                $value .= '{ID}' unless $value =~ /{ID}|{LABEL}/; 
+                $value .= '{ID}' unless $value =~ /{ID}}/; 
                 my $uri = $value; 
-                $uri =~ s/{ID}|{LABEL}//g;
+                $uri =~ s/{ID}//g;
                 croak 'Invalid #TARGET field: must be an URI pattern'
                     unless _is_uri($uri);
             } elsif ($key eq 'FEED') {
@@ -234,9 +235,6 @@ sub meta { # TODO: document meta fields
   /^http(s)?:\/\/[a-z0-9-]+(.[a-z0-9-]+)*(:[0-9]+)?(\/[^#|]*)?(\?[^#|]*)?$/i;
             } elsif ($key eq 'PREFIX') {
                 croak 'PREFIX meta value must be a URI' 
-                    unless _is_uri($value);
-            } elsif ($key eq 'TARGETPREFIX') {
-                croak 'TARGETPREFIX meta value must be a URI' 
                     unless _is_uri($value);
             } elsif ( $key =~ /^(REVISIT|TIMESTAMP)$/) {
                 if ($value =~ /^[0-9]+$/) { # seconds since epoch
@@ -267,13 +265,7 @@ sub meta { # TODO: document meta fields
                 }
                 # Note that examples are not checked for validity,
                 # because PREFIX may not be set yet.
-            } elsif ( $key eq 'COUNT' ) {
-                $self->{expected_count} = $value;
             }
-            if ((defined $self->{meta}->{TARGET} and $key eq 'TARGETPREFIX') 
-              ||(defined $self->{meta}->{TARGETPREFIX} and $key eq 'TARGET')) {
-                croak "TARGET and TARGETPREFIX cannot be set both";
-            } 
             $self->{meta}->{$key} = $value;
         }
     }
@@ -340,12 +332,9 @@ sub metafields {
     my %fields = %meta;
 
     # determine default order
-    my @order = 
-      qw(FORMAT PREFIX TARGET TARGETPREFIX FEED CONTACT INSTITUTION DESCRIPTION
-         TIMESTAMP UPDATE REVISIT MESSAGE ONEMESSAGE SOMEMESSAGE REMARK);
-    delete $fields{$_} foreach @order;
-    push @order, grep { !($_ =~ /^(EXAMPLES|COUNT)$/) } sort keys %fields;
-    push @order, qw(EXAMPLES COUNT);
+    my @order = (qw(FORMAT PREFIX TARGET MESSAGE RELATION ANNOTATION),
+        qw(DESCRIPTION CREATOR CONTACT HOMEPAGE FEED TIMESTAMP UPDATE),
+        qw(SOURCESET TARGETSET NAME INSTITUTION));
 
     my @lines = map { "#$_: " . $meta{$_} } grep { defined $meta{$_} } @order;
     return @lines ? join ("\n", @lines) . "\n" : "";
@@ -415,7 +404,6 @@ sub parse {
     $self->_initparams( @_ );
     $self->_startparsing if defined $self->{from}; # start from new source
 
-    $self->{meta}->{COUNT} = 0;
     my $line = $self->{lookaheadline};
     $line = $self->_readline() unless defined $line;
 
@@ -423,22 +411,6 @@ sub parse {
         $self->appendline( $line );
         $line = $self->_readline();
     } 
-
-    # additional integrity checks
-    if (defined $self->{expected_count}) {
-        if ($self->count != $self->{expected_count}) {
-            my $msg = "expected " . $self->{expected_count} 
-                    . " links, but got " . $self->count;
-            $self->_handle_error( $msg, '' );
-        }
-    }
-    if (defined $self->{expected_examples}) {
-        if (keys %{ $self->{expected_examples} }) {
-            my $msg = 'examples not found: '
-                    . join '|', keys %{ $self->{expected_examples} };
-            $self->_handle_error( $msg, '' );
-        }
-    }
 
     return $self->errors == 0;
 }
@@ -730,7 +702,7 @@ sub _initparams {
     if ( $param{errors} ) {
         my $handler = $param{errors};
         $handler = $Data::Beacon::ERROR_HANDLERS{lc($handler)}
-	    unless ref($handler);
+        unless ref($handler);
         unless ( ref($handler) and ref($handler) eq 'CODE' ) {
             my $msg = 'error handler must be code or ' 
                     . join('/',keys %Data::Beacon::ERROR_HANDLERS)
@@ -786,7 +758,6 @@ sub _startparsing {
     $self->{fh} = undef;
     $self->{inputlines} = [];
     $self->{examples} = [];
-    $self->{expected_count} = undef;
 
     return unless defined $self->{from};
 
@@ -1003,7 +974,6 @@ sub _expandlink {
         $link->[3] = $target;
         my $label = $link->[1];
         $link->[3] =~ s/{ID}/$source/g;
-        $link->[3] =~ s/{LABEL}/uri_escape($label)/eg;
     } elsif( defined $targetprefix ) {
         $link->[3] = $targetprefix . $link->[3];
     }
