@@ -3,6 +3,7 @@ use warnings;
 package Data::Beacon;
 #ABSTRACT: BEACON format validating parser and serializer
 
+use 5.008;
 use Time::Piece;
 use Scalar::Util qw(blessed);
 use URI::Escape;
