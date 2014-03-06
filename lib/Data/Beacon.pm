@@ -12,6 +12,8 @@ use Carp;
 use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
 
+=encoding utf8
+
 =head1 NAME
 
 Data::Beacon - BEACON format validating parser and serializer
