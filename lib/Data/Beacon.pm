@@ -11,6 +11,10 @@ use Carp;
 use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
 
+=head1 NAME
+
+Data::Beacon - BEACON format validating parser and serializer
+
 =head1 DESCRIPTION
 
 THIS MODULE DOES NOT REFLECT THE CURRENT STATE OF BEACON SPECIFICATION!

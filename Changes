@@ -2,6 +2,9 @@ Revision history for Perl package Data::Beacon
 ==============================================
 '*' indicates a revision also published at CPAN.
 
+0.3.1 2014-03-
+    - Added abstract to pod, so tools like MetaCPAN can find it
+
 0.3.0 2012-12-04*
     - removed BEACON collection handling
 
