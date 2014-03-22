@@ -1,14 +1,9 @@
 #!/usr/bin/perl
-
-=head1 NAME
-
-beacon - beacon command line client
-
-=cut
+#PODNAME: beacon
+#ABSTRACT: beacon command line client
+#VERSION
 
 use strict;
-
-our $VERSION = '0.2.4';
 
 use Getopt::Long;
 use Pod::Usage;
@@ -35,7 +30,7 @@ GetOptions(
     "password:s" => \$password,
     # TODO: head and tail
 ) or pod2usage(2);
-my $msg = "beacon version $VERSION (based on Data::Beacon ${Data::Beacon::VERSION})";
+my $msg = "beacon version $VERSION";
 pod2usage( -msg => $msg, -verbose => 1 ) 
     if $help or (@ARGV and $ARGV[0] eq 'help');
 pod2usage(-verbose => 2) if $man;
@@ -327,17 +322,4 @@ The command name C<beacon> clashes with a tool of same name from the
 ax25-tools package (L<http://www.linux-ax25.org/>). If you need to use
 beacon together with hamradio, you need to rename one of the two scripts.
 
-=head1 AUTHOR
-
-Jakob Voss C<< <jakob.voss@gbv.de> >>
-
-=head1 LICENSE
-
-Copyright (C) 2010 by Verbundzentrale Goettingen (VZG) and Jakob Voss
-
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
-
-In addition you may fork this library under the terms of the 
-GNU Affero General Public License.
+=cut

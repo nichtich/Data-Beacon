@@ -2,6 +2,7 @@ use strict;
 use warnings;
 package Data::Beacon;
 #ABSTRACT: BEACON format validating parser and serializer
+#VERSION
 
 use 5.008;
 use Time::Piece;
@@ -13,10 +14,6 @@ use base 'Exporter';
 our @EXPORT = qw(plainbeaconlink beacon);
 
 =encoding utf8
-
-=head1 NAME
-
-Data::Beacon - BEACON format validating parser and serializer
 
 =head1 DESCRIPTION
 
@@ -1034,25 +1031,9 @@ sub _is_uri {
 
 1;
 
-=head1 DEVELOPMENT
-
-Please visit http://github.com/nichtich/p5-data-beacon for the latest
-development snapshot, bug reports, feature requests, and such.
-
 =head1 SEE ALSO
 
 See also L<SeeAlso::Server> for an API to exchange single sets of 
 beacon links, based on the same source identifier.
-
-=head1 AUTHOR
-
-Jakob Voß E<lt>jakob.voss@gbv.deE<gt>
-
-=head1 COPYRIGHT AND LICENSE
-
-This software is copyright (c) 2010 by Jakob Voß E<lt>jakob.voss@gbv.deE<gt>.
-
-This is free software; you can redistribute it and/or modify it under
-the same terms as the Perl 5 programming language system itself.
 
 =cut

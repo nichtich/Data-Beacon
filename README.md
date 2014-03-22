@@ -18,6 +18,16 @@ To manually install from the sources, best use `cpanm`:
 
     $ cpanm Data::Beacon
 
+# REALESES
+
+See <https://metacpan.org/release/Data-Beacon>.
+
+# TEST STATUS
+
+[![Build Status](https://travis-ci.org/nichtich/Data-Beacon.png)](https://travis-ci.org/nichtich/Data-Beacon)
+[![Coverage Status](https://coveralls.io/repos/nichtich/Data-Beacon/badge.png)](https://coveralls.io/r/nichtich/Data-Beacon)
+[![Kwalitee Score](http://cpants.cpanauthors.org/dist/Data-Beacon.png)](http://cpants.cpanauthors.org/dist/Data-Beacon)
+
 # BUGS
 
 The current version of this module does not fully reflect the BEACON
@@ -27,11 +37,12 @@ BEACON has been finalized!
 Please report any bugs or feature requests to this project's GitHub
 repository at:
 
-http://github.com/nichtich/p5-data-beacon/issues
+http://github.com/nichtich/Data-Beacon/issues
 
 Thank you!   
 
 # AUTHOR
+
 Jakob Voss <jakob.voss@gbv.de>
 
 # LICENSE
